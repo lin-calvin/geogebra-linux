@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Our own GWT module: GeoGebra kernel + a GTK/Cairo platform backend.
+
+  This module lives in OUR repository. It only depends on upstream *interfaces*
+  (org.geogebra.common.*, org.geogebra.ggbjdk.*) and never on org.geogebra.web.*.
+  It is injected into the upstream source tree at build time (see build.sh).
+-->
+<module rename-to="ggbcanvas">
+	<inherits name="org.geogebra.Common" />
+	<inherits name="org.geogebra.GgbJdk" />
+	<inherits name="org.geogebra.editor.JLMEditorDev" />
+
+	<source path='client' />
+
+	<entry-point class='org.geogebra.gjs.client.GjsBackend' />
+
+	<set-property name="gwt.uncaughtexceptionhandler.windowonerror" value="IGNORE" />
+	<set-property name="gwt.logging.enabled" value="FALSE" />
+	<collapse-all-properties />
+	<add-linker name="sso" />
+</module>

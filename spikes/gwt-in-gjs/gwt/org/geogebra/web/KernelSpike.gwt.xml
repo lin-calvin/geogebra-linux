@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module rename-to="kernelspike">
+	<inherits name="org.geogebra.Common" />
+	<inherits name="org.geogebra.GgbJdk" />
+	<inherits name="org.geogebra.editor.JLMEditorDev" />
+	<source path='spike' />
+	<entry-point class='org.geogebra.web.spike.KernelSpike' />
+	<set-property name="gwt.uncaughtexceptionhandler.windowonerror" value="IGNORE" />
+	<set-property name="gwt.logging.enabled" value="FALSE" />
+	<collapse-all-properties />
+	<add-linker name="sso" />
+</module>
