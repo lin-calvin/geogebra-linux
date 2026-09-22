@@ -1,0 +1,13 @@
+{
+  "name": "ggb-linux",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GeoGebra desktop app for Linux (Tauri wrapper around the from-source GWT web build)",
+  "scripts": {
+    "tauri": "tauri",
+    "assemble": "bash scripts/assemble-webapp.sh"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
