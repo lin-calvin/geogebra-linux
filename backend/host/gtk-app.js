@@ -2,6 +2,7 @@
 //   header (menu + title + perspective) / icon rail + panel / graphics view
 // Only the Graphing perspective is implemented; other perspectives are stubs.
 import Gtk from 'gi://Gtk?version=4.0';
+import Gdk from 'gi://Gdk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -9,11 +10,25 @@ import { installBrowserShim } from './shim.js';
 import { installCairoHost, contextForCr } from './cairo-host.js';
 import { readGgb, writeGgb } from './ggbfile.js';
 import { loadFunctions } from './functions.js';
+import { loadCas } from './cas.js';
 
 const modulePath = ARGV[0];
 if (!modulePath) {
     printerr('usage: gjs -m gtk-app.js <ggbcanvas.nocache.js>');
     imports.system.exit(1);
+}
+
+// --- Giac CAS (WebAssembly) -------------------------------------------------
+// Loaded before the kernel starts, so CAS commands work from the first
+// evaluation; the backend reaches it through the global `ggbCas`.
+const hostDir = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
+const casGlue = GLib.getenv('GJSGEBRA_CAS_GLUE') || hostDir + '/giac-glue.js';
+const casWasm = GLib.getenv('GJSGEBRA_CAS_WASM') || hostDir + '/giac.wasm';
+let casReady = false;
+try {
+    casReady = loadCas(casGlue, casWasm);
+} catch (e) {
+    printerr('cas: unavailable (' + e.message + '); CAS commands stay numeric');
 }
 
 // --- load the GWT-compiled kernel + app ------------------------------------
@@ -26,6 +41,9 @@ if (!ok) {
 }
 (0, eval)(new TextDecoder('utf-8').decode(bytes));
 GgbApp.init();
+// only turn CAS on once we know there is an engine behind it: without one the
+// kernel would answer "?" instead of falling back to the numeric variant
+GgbApp.setCasEnabled(casReady);
 GgbApp.evalCommand('A=(1,2)');
 GgbApp.evalCommand('f(x)=x^2');
 GgbApp.evalCommand('s=Line(A,(3,1))');
@@ -57,7 +75,6 @@ let stack = null;
 let mainStack = null;
 let toastOverlay = null;
 let currentPath = null;
-let perspectiveLabel = null;
 let calcEntry = null;
 let historyBox = null;
 let historyScroll = null;
@@ -72,6 +89,16 @@ function redraw() {
 function toast(message) {
     if (toastOverlay) {
         toastOverlay.add_toast(new Adw.Toast({ title: message }));
+    }
+}
+
+// ------------------------------------------------------------- gesture debug
+// GJSGEBRA_GESTURE_DEBUG=1 prints every gesture event, so touchpad / touchscreen
+// problems can be diagnosed from a real machine.
+const GESTURE_DEBUG = GLib.getenv('GJSGEBRA_GESTURE_DEBUG') === '1';
+function dbg(...args) {
+    if (GESTURE_DEBUG) {
+        print('[gesture] ' + args.join(' '));
     }
 }
 
@@ -281,7 +308,8 @@ function appendHistory(expression, result) {
 }
 
 function scrollHistoryToBottom() {
-    GLib.idle_add(() => {
+    // GJS wants the priority as the first argument
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
         if (historyScroll) {
             const adjustment = historyScroll.get_vadjustment();
             adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size());
@@ -429,8 +457,6 @@ function insertInto(entry, text) {
 function buildUI() {
     const header = new Adw.HeaderBar();
     header.add_css_class('flat');
-    // no centred title (the title lives on the left, next to the menu)
-    header.set_title_widget(new Gtk.Box());
 
     // left: main menu
     const menu = new Gio.Menu();
@@ -452,24 +478,13 @@ function buildUI() {
     menuButton.add_css_class('flat');
     header.pack_start(menuButton);
 
-    // title + perspective
-    const title = new Gtk.Label({ label: 'GJSGebra' });
-    title.add_css_class('title-4');
-    header.pack_start(title);
-
-    const perspectiveMenu = new Gio.Menu();
-    perspectiveMenu.append('Graphing', 'app.perspective-graphing');
-    perspectiveMenu.append('Scientific Calculator', 'app.perspective-calculator');
-    const perspectiveChild = new Gtk.Box({ spacing: 6 });
-    perspectiveChild.append(new Gtk.Image({ icon_name: 'view-grid-symbolic', pixel_size: 16 }));
-    perspectiveLabel = new Gtk.Label({ label: 'Graphing' });
-    perspectiveChild.append(perspectiveLabel);
-    perspectiveChild.append(new Gtk.Image({ icon_name: 'pan-down-symbolic', pixel_size: 14 }));
-    const perspectiveButton = new Gtk.MenuButton({ menu_model: perspectiveMenu });
-    perspectiveButton.set_child(perspectiveChild);
-    perspectiveButton.add_css_class('pill');
-    perspectiveButton.set_margin_start(12);
-    header.pack_start(perspectiveButton);
+    // centre: the perspectives as an inline segmented switcher (GNOME style, icon
+    // + label per segment). The stack itself is attached further down, once built.
+    const switcher = new Adw.InlineViewSwitcher({
+        display_mode: Adw.InlineViewSwitcherDisplayMode.BOTH,
+        can_shrink: false,
+    });
+    header.set_title_widget(switcher);
 
     // --- rail + panel stack ---
     stack = new Gtk.Stack({
@@ -518,6 +533,8 @@ function buildUI() {
         GgbApp.setSize(width, height);
         GgbApp.drawOn(contextForCr(cr, width, height), width, height);
     });
+    // let the kernel ask for a redraw instead of every call site remembering to
+    GgbApp.setRedrawRequest(() => redraw());
 
     const overlay = new Gtk.Overlay();
     overlay.set_child(area);
@@ -581,21 +598,43 @@ function buildUI() {
     zoomBox.append(resetView);
     overlay.add_overlay(zoomBox);
 
-    // interaction: press / drag / release
+    // interaction: the kernel decides whether a drag pans the view (empty space)
+    // or moves an object, so drags still go through its mouse pipeline
     let start = [0, 0];
+    let dragging = false;
+    let pinching = false;
+
+    const endKernelDrag = (x, y) => {
+        if (dragging) {
+            dragging = false;
+            GgbApp.mouseUp(x, y, 1, false, false, false, false);
+            refreshAlgebra();
+            redraw();
+        }
+    };
+
     const drag = new Gtk.GestureDrag();
     drag.connect('drag-begin', (g, x, y) => {
+        if (pinching) {
+            return;
+        }
         start = [x, y];
+        dragging = true;
+        dbg('drag-begin', x.toFixed(1), y.toFixed(1));
         GgbApp.mouseDown(x, y, 1, false, false, false, false, 1);
     });
     drag.connect('drag-update', (g, ox, oy) => {
+        if (pinching || !dragging) {
+            return;
+        }
         GgbApp.mouseDrag(start[0] + ox, start[1] + oy, false, false, false, false);
         redraw();
     });
     drag.connect('drag-end', (g, ox, oy) => {
-        GgbApp.mouseUp(start[0] + ox, start[1] + oy, 1, false, false, false, false);
-        refreshAlgebra();
-        redraw();
+        if (pinching) {
+            return;
+        }
+        endKernelDrag(start[0] + ox, start[1] + oy);
     });
     area.add_controller(drag);
 
@@ -607,15 +646,133 @@ function buildUI() {
     });
     area.add_controller(motion);
 
+    // Zoom anchor: the pointer while it is over the canvas, else the centre.
+    const anchor = () => {
+        const w = area.get_width();
+        const h = area.get_height();
+        if (last[0] > 0 && last[0] < w && last[1] > 0 && last[1] < h) {
+            return last;
+        }
+        return [w / 2, h / 2];
+    };
+
+    const zoomBy = (factor, x, y) => {
+        if (!(factor > 0) || factor === 1) {
+            return;
+        }
+        GgbApp.zoomAt(x, y, factor);
+        redraw();
+    };
+
+    // Scroll. A two-finger touchpad scroll pans the view (GNOME-style); every
+    // other device - mouse wheel, smooth-scrolling mouse, trackpoint - keeps the
+    // classic zoom, so a desktop without a touchpad behaves exactly as before.
+    // Ctrl/Meta always zooms, Shift always pans.
     const scroll = new Gtk.EventControllerScroll({
-        flags: Gtk.EventControllerScrollFlags.VERTICAL,
+        flags: Gtk.EventControllerScrollFlags.BOTH_AXES,
     });
     scroll.connect('scroll', (c, dx, dy) => {
-        GgbApp.mouseWheel(last[0], last[1], dy, false, false);
-        redraw();
+        const device = c.get_current_event_device();
+        const source = device ? device.get_source() : Gdk.InputSource.MOUSE;
+        const state = c.get_current_event_state();
+        const zoomMod = (state & (Gdk.ModifierType.CONTROL_MASK
+            | Gdk.ModifierType.META_MASK)) !== 0;
+        const panMod = (state & Gdk.ModifierType.SHIFT_MASK) !== 0;
+        const touchpad = source === Gdk.InputSource.TOUCHPAD;
+        dbg('scroll', 'source=' + source, 'unit=' + c.get_unit(),
+            'dx=' + dx.toFixed(3), 'dy=' + dy.toFixed(3),
+            'ctrl=' + zoomMod, 'shift=' + panMod);
+        if (panMod || (touchpad && !zoomMod)) {
+            GgbApp.panBy(-dx, -dy);
+            redraw();
+        } else {
+            const [ax, ay] = anchor();
+            zoomBy(Math.pow(1.1, -dy), ax, ay);
+        }
         return true;
     });
     area.add_controller(scroll);
+
+    // Pinch-to-zoom. Two sources, one accumulator: the scale reported by both is
+    // cumulative from the start of the gesture, so only the ratio between two
+    // consecutive reports may be applied.
+    let pinchScale = 1;
+
+    // Touchpad half: GTK delivers GDK_TOUCHPAD_PINCH as a raw event with no
+    // touch sequences, so handle it directly.
+    const legacy = new Gtk.EventControllerLegacy();
+    legacy.connect('event', (c, event) => {
+        if (event.get_event_type() !== Gdk.EventType.TOUCHPAD_PINCH) {
+            return false;
+        }
+        const phase = event.get_gesture_phase();
+        const fingers = event.get_n_fingers();
+        const scale = event.get_pinch_scale();
+        dbg('touchpad-pinch', 'phase=' + phase, 'fingers=' + fingers,
+            'scale=' + scale.toFixed(4));
+        if (fingers !== 2) {
+            return true;
+        }
+        if (phase === Gdk.TouchpadGesturePhase.BEGIN) {
+            pinchScale = scale;
+        } else if (phase === Gdk.TouchpadGesturePhase.UPDATE) {
+            const factor = pinchScale > 0 ? scale / pinchScale : 1;
+            pinchScale = scale;
+            const [ax, ay] = anchor();
+            zoomBy(factor, ax, ay);
+        } else {
+            pinchScale = 1;
+        }
+        return true;
+    });
+    area.add_controller(legacy);
+
+    // Touchscreen half: two touch sequences. Grouped with the drag so the drag
+    // does not claim the first finger before the pinch has formed.
+    const pinch = new Gtk.GestureZoom();
+    area.add_controller(pinch);
+    // both are attached now, so they may be grouped; grouping lets the drag and
+    // the pinch recognize the same sequence, so the drag cannot claim the first
+    // finger before the pinch has formed
+    pinch.group(drag);
+    pinch.connect('begin', () => {
+        const event = pinch.get_current_event();
+        if (event && event.get_event_type() === Gdk.EventType.TOUCHPAD_PINCH) {
+            return; // the legacy handler owns touchpad pinch
+        }
+        pinching = true;
+        pinchScale = 1;
+        const [x, y] = anchor();
+        endKernelDrag(x, y);
+        dbg('pinch-begin');
+    });
+    pinch.connect('end', () => {
+        if (pinching) {
+            pinching = false;
+            pinchScale = 1;
+            dbg('pinch-end');
+        }
+    });
+    pinch.connect('cancel', () => {
+        if (pinching) {
+            pinching = false;
+            pinchScale = 1;
+            dbg('pinch-cancel');
+        }
+    });
+    pinch.connect('scale-changed', (g, scale) => {
+        const event = g.get_current_event();
+        const touchpad = event && event.get_event_type() === Gdk.EventType.TOUCHPAD_PINCH;
+        dbg('pinch-scale', scale.toFixed(4), 'touchpad=' + touchpad);
+        if (touchpad) {
+            return;
+        }
+        const factor = scale / pinchScale;
+        pinchScale = scale;
+        const [found, cx, cy] = g.get_bounding_box_center();
+        const [ax, ay] = found ? [cx, cy] : anchor();
+        zoomBy(factor, ax, ay);
+    });
 
     const split = new Adw.OverlaySplitView();
     split.set_show_sidebar(true);
@@ -625,9 +782,12 @@ function buildUI() {
 
     const toolbarView = new Adw.ToolbarView();
     toolbarView.add_top_bar(header);
-    mainStack = new Gtk.Stack({ transition_type: Gtk.StackTransitionType.CROSSFADE });
-    mainStack.add_named(split, 'graphing');
-    mainStack.add_named(buildCalculator(), 'calculator');
+    // AdwViewStack, because AdwInlineViewSwitcher only drives that one
+    mainStack = new Adw.ViewStack();
+    mainStack.add_titled_with_icon(split, 'graphing', 'Graphing', 'view-grid-symbolic');
+    mainStack.add_titled_with_icon(buildCalculator(), 'calculator', 'Calculator',
+        'accessories-calculator-symbolic');
+    switcher.set_stack(mainStack);
     toolbarView.set_content(mainStack);
 
     toastOverlay = new Adw.ToastOverlay();
@@ -763,16 +923,10 @@ addAction('perspective-graphing', () => {
     if (mainStack) {
         mainStack.set_visible_child_name('graphing');
     }
-    if (perspectiveLabel) {
-        perspectiveLabel.set_label('Graphing');
-    }
 });
 addAction('perspective-calculator', () => {
     if (mainStack) {
         mainStack.set_visible_child_name('calculator');
-    }
-    if (perspectiveLabel) {
-        perspectiveLabel.set_label('Scientific Calculator');
     }
     if (calcEntry) {
         calcEntry.grab_focus();

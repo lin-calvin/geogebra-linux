@@ -8,6 +8,7 @@ import org.geogebra.common.awt.AwtFactory;
 import org.geogebra.common.awt.GColor;
 import org.geogebra.common.awt.GGraphics2D;
 import org.geogebra.common.euclidian.EuclidianController;
+import org.geogebra.common.euclidian.EuclidianView;
 import org.geogebra.common.euclidian.event.PointerEventType;
 import org.geogebra.common.kernel.Construction;
 import org.geogebra.common.kernel.Kernel;
@@ -20,6 +21,7 @@ import org.geogebra.common.kernel.kernelND.GeoElementND;
 import org.geogebra.common.main.App;
 import org.geogebra.common.main.error.ErrorHandler;
 
+import jsinterop.annotations.JsFunction;
 import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
 import jsinterop.annotations.JsType;
@@ -29,6 +31,15 @@ import jsinterop.annotations.JsType;
  */
 @JsType(namespace = JsPackage.GLOBAL, name = "GgbApp")
 public class GjsApp {
+
+	/** Callback the shell hands us so the view can ask for a GTK redraw. */
+	@JsFunction
+	public interface RedrawRequest {
+		void run();
+	}
+
+	/** Scale step applied by the zoom in / out buttons. */
+	private static final double ZOOM_STEP = 1.25;
 
 	private static AppGjs app;
 
@@ -62,6 +73,18 @@ public class GjsApp {
 	@JsMethod
 	public static boolean isReady() {
 		return app != null;
+	}
+
+	/**
+	 * Registers the shell's redraw callback, so that anything the kernel repaints
+	 * on its own (coordinate system changes, object updates) reaches the canvas
+	 * without the caller having to remember to ask for a redraw.
+	 *
+	 * @param request callback that schedules a GTK redraw
+	 */
+	@JsMethod
+	public static void setRedrawRequest(RedrawRequest request) {
+		view().setRedrawRequest(() -> request.run());
 	}
 
 	/** @return number of objects in the construction */
@@ -414,20 +437,88 @@ public class GjsApp {
 		app().setMode(mode);
 	}
 
+	/**
+	 * Turns CAS-backed commands on/off. With CAS off (the default, matching
+	 * {@code AppConfigGraphing}) {@code Derivative(f)} is compiled as the numeric
+	 * variant and shows up as {@code NDerivative(f)}.
+	 *
+	 * @param enabled whether CAS commands are allowed
+	 */
 	@JsMethod
-	public static String zoomIn() {
-		return evalCommand("ZoomIn(1)");
+	public static void setCasEnabled(boolean enabled) {
+		app().getSettings().getCasSettings().setEnabled(enabled);
 	}
 
+	/** Zooms in around the centre of the view. */
 	@JsMethod
-	public static String zoomOut() {
-		return evalCommand("ZoomOut(1)");
+	public static void zoomIn() {
+		zoomAroundCentre(ZOOM_STEP);
+	}
+
+	/** Zooms out around the centre of the view. */
+	@JsMethod
+	public static void zoomOut() {
+		zoomAroundCentre(1 / ZOOM_STEP);
+	}
+
+	private static void zoomAroundCentre(double factor) {
+		EuclidianView view = view();
+		view.zoom(view.getWidth() / 2.0, view.getHeight() / 2.0, factor, 4, false);
+		app().setUnsaved();
 	}
 
 	/** Resets the view to the standard coordinate system. */
 	@JsMethod
 	public static void resetView() {
 		view().setStandardView(true);
+	}
+
+	/**
+	 * Translates the view by a screen-space offset, without going through the mouse
+	 * event pipeline. Used by the shell's native pan gestures (touchpad two-finger
+	 * scroll, touch drag inertia).
+	 *
+	 * @param dx
+	 *            horizontal offset in pixels (positive = content moves right)
+	 * @param dy
+	 *            vertical offset in pixels (positive = content moves down)
+	 */
+	@JsMethod
+	public static void panBy(double dx, double dy) {
+		EuclidianView view = view();
+		view.setCoordSystem(view.getXZero() + dx, view.getYZero() + dy,
+				view.getXscale(), view.getYscale());
+		app().setUnsaved();
+	}
+
+	/**
+	 * Scales the view around a screen point, without going through the mouse event
+	 * pipeline. Used by native pinch / ctrl+scroll.
+	 *
+	 * @param px
+	 *            x of the point that stays fixed
+	 * @param py
+	 *            y of the point that stays fixed
+	 * @param factor
+	 *            scale factor (&gt; 1 zooms in)
+	 */
+	@JsMethod
+	public static void zoomAt(double px, double py, double factor) {
+		if (factor > 0 && factor != 1) {
+			view().zoom(px, py, factor, 1, false);
+			app().setUnsaved();
+		}
+	}
+
+	/**
+	 * @return the view coordinate system as {@code "xZero,yZero,xscale,yscale"};
+	 *         mainly for tests and gesture tuning
+	 */
+	@JsMethod
+	public static String getViewState() {
+		EuclidianView view = view();
+		return view.getXZero() + "," + view.getYZero() + ","
+				+ view.getXscale() + "," + view.getYscale();
 	}
 
 	/** @return the construction as {@code geogebra.xml} */

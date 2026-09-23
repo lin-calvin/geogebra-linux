@@ -64,10 +64,16 @@ public class GFontGjs implements GFont {
 		return name;
 	}
 
-	/** @return a Pango/Cairo font description, e.g. {@code Sans Bold Italic 14} */
+	/**
+	 * @return a Pango font description, e.g. {@code Sans Bold Italic 14px}. The family
+	 *         has to come first and the size has to be in pixels: Pango parses the
+	 *         string as {@code family style size}, and a bare number is read as
+	 *         points, which would render every glyph 4/3 too large for the metrics
+	 *         JLaTeXMath lays out with.
+	 */
 	public String getFullFontString() {
 		return name + (isBold() ? " Bold" : "") + (isItalic() ? " Italic" : "")
-				+ " " + (int) Math.round(size);
+				+ " " + (int) Math.round(size) + "px";
 	}
 
 	@Override

@@ -10,3 +10,5 @@
 /flatpak/.flatpak-builder
 /flatpak/repo
 /*.flatpak
+/backend/host/giac.wasm
+/backend/host/giac-glue.js

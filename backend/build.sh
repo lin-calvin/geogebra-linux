@@ -63,3 +63,33 @@ echo "    $(find "$FONTS_DEST" -name '*.ttf' | wc -l) fonts in $FONTS_DEST"
 echo ">>> copying command.properties (function selector)"
 cp -f "$GGB/source/shared/common-jre/src/main/resources/org/geogebra/common/jre/properties/command.properties" \
   "$ROOT/backend/host/command.properties"
+
+echo ">>> extracting Giac CAS (wasm + emscripten glue)"
+GIAC_JAR="$(find "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2" -name 'giac-gwt-*.jar' \
+  ! -name '*-sources.jar' 2>/dev/null | head -1)"
+if [ -n "$GIAC_JAR" ]; then
+  python3 - "$GIAC_JAR" "$ROOT/backend/host" <<'PY'
+import base64, sys, zipfile
+
+jar, dest = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(jar) as archive:
+    glue = archive.read('fr/grenoble/ujf/giac/giac.wasm.js').decode('utf-8')
+
+marker = 'data:application/wasm;base64,'
+start = glue.index(marker) + len(marker)
+end = start
+alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+while glue[end] in alphabet:
+    end += 1
+
+wasm = base64.b64decode(glue[start:end])
+with open(dest + '/giac.wasm', 'wb') as out:
+    out.write(wasm)
+# the loader supplies the wasm separately, so drop the 10 MB payload from the glue
+with open(dest + '/giac-glue.js', 'w') as out:
+    out.write(glue[:start] + glue[end:])
+print('    giac.wasm %d bytes, glue %d bytes' % (len(wasm), len(glue) - (end - start)))
+PY
+else
+  echo "    warning: giac-gwt jar not found; CAS will be unavailable" >&2
+fi

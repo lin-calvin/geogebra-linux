@@ -172,10 +172,13 @@ export function installCairoHost() {
             log.push("writePng " + path);
         },
         measureText: (name, style, size, text) => {
-            const weight = (style & 1) ? "Bold " : "";
-            const slant = (style & 2) ? "Italic " : "";
+            // Pango reads a font description as "family [style] size"; the family has
+            // to come first, and the size has to be in pixels so that glyphs match the
+            // metrics JLaTeXMath lays out with (a bare number means points).
+            const weight = (style & 1) ? " Bold" : "";
+            const slant = (style & 2) ? " Italic" : "";
             const desc = Pango.FontDescription.from_string(
-                weight + slant + Math.round(size) + " " + name);
+                name + weight + slant + " " + Math.round(size) + "px");
             const layout = PangoCairo.create_layout(scratchContext());
             layout.set_font_description(desc);
             layout.set_text(String(text), -1);

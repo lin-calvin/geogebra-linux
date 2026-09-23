@@ -8,7 +8,6 @@ import org.geogebra.common.euclidian.DrawEquation;
 import org.geogebra.common.euclidian.EuclidianController;
 import org.geogebra.common.euclidian.EuclidianView;
 import org.geogebra.common.factories.CASFactory;
-import org.geogebra.common.factories.CASFactoryDummy;
 import org.geogebra.common.factories.Factory;
 import org.geogebra.common.factories.FormatFactory;
 import org.geogebra.common.factories.UtilFactory;
@@ -27,7 +26,6 @@ import org.geogebra.common.main.GuiManagerInterface;
 import org.geogebra.common.main.Localization;
 import org.geogebra.common.main.SpreadsheetTableModel;
 import org.geogebra.common.main.settings.DefaultSettings;
-import org.geogebra.common.main.settings.config.AppConfigGraphing;
 import org.geogebra.common.main.undo.DefaultUndoManager;
 import org.geogebra.common.main.undo.UndoManager;
 import org.geogebra.common.plugin.GgbAPI;
@@ -49,12 +47,12 @@ import org.geogebra.common.util.debug.Log;
 public class AppGjs extends App {
 
 	private final LocalizationGjs localization = new LocalizationGjs();
-	private final CASFactory casFactory = new CASFactoryDummy();
+	private final CASFactory casFactory = new CASFactoryGjs();
 	private GFont plainFont;
 
 	public AppGjs() {
 		super(Platform.ANDROID);
-		this.appConfig = new AppConfigGraphing();
+		this.appConfig = new AppConfigGjs();
 		AwtFactory.setPrototypeIfNull(new AwtFactoryGjs());
 		FormatFactory.setPrototypeIfNull(new FormatFactoryGjs());
 		UtilFactory.setPrototypeIfNull(new UtilFactoryGjs());
