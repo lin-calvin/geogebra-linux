@@ -72,8 +72,8 @@ public class GjsApp {
 	}
 
 	/**
-	 * Algebra view rows: one object per line, fields tab-separated as
-	 * {@code label \t value \t visible(0|1)}.
+	 * Algebra view rows: one object per line, tab-separated as
+	 * {@code label \t value \t visible(0|1) \t #rrggbb}.
 	 *
 	 * @return rows
 	 */
@@ -86,9 +86,24 @@ public class GjsApp {
 			}
 			sb.append(geo.getLabelSimple()).append('\t')
 					.append(geo.toValueString(StringTemplate.defaultTemplate)).append('\t')
-					.append(geo.isEuclidianVisible() ? "1" : "0");
+					.append(geo.isEuclidianVisible() ? "1" : "0").append('\t')
+					.append(colorHex(geo.getObjectColor()));
 		}
 		return sb.toString();
+	}
+
+	private static String colorHex(GColor color) {
+		if (color == null) {
+			return "#000000";
+		}
+		String digits = "0123456789abcdef";
+		StringBuilder hex = new StringBuilder("#");
+		int[] channels = {color.getRed(), color.getGreen(), color.getBlue()};
+		for (int channel : channels) {
+			hex.append(digits.charAt((channel >> 4) & 0xf));
+			hex.append(digits.charAt(channel & 0xf));
+		}
+		return hex.toString();
 	}
 
 	/**
@@ -232,6 +247,16 @@ public class GjsApp {
 			return "ok (" + objectCount() + ")";
 		} catch (Throwable t) {
 			return "error: " + t;
+		}
+	}
+
+	/** Shows or hides an object in the graphics view. */
+	@JsMethod
+	public static void setVisible(String label, boolean visible) {
+		GeoElement geo = app().getKernel().getConstruction().lookupLabel(label);
+		if (geo != null) {
+			geo.setEuclidianVisible(visible);
+			geo.updateRepaint();
 		}
 	}
 
