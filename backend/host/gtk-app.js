@@ -51,8 +51,13 @@ let area = null;
 let listBox = null;
 let algebraEntry = null;
 let stack = null;
+let mainStack = null;
 let toastOverlay = null;
 let currentPath = null;
+let perspectiveLabel = null;
+let calcEntry = null;
+let calcResult = null;
+let lastResult = '';
 
 function redraw() {
     if (area) {
@@ -227,6 +232,120 @@ function railButton(iconName, label) {
     return button;
 }
 
+// ------------------------------------------------------------- calculator
+
+function updateCalcResult() {
+    const text = calcEntry.get_text().trim();
+    if (!text) {
+        calcResult.set_label('');
+        return;
+    }
+    const result = GgbApp.evaluate(text);
+    calcResult.set_label(result === 'error' ? '' : result);
+}
+
+function commitCalc() {
+    const text = calcEntry.get_text().trim();
+    if (!text) {
+        return;
+    }
+    const result = GgbApp.evaluate(text);
+    if (result !== 'error') {
+        lastResult = result;
+        calcEntry.set_text(result);
+        calcEntry.set_position(-1);
+        calcResult.set_label('');
+    }
+}
+
+function calcInsert(text) {
+    const current = calcEntry.get_text();
+    const pos = calcEntry.get_position();
+    calcEntry.set_text(current.slice(0, pos) + text + current.slice(pos));
+    calcEntry.set_position(pos + text.length);
+    calcEntry.grab_focus();
+}
+
+function calcBackspace() {
+    const current = calcEntry.get_text();
+    const pos = calcEntry.get_position();
+    if (pos > 0) {
+        calcEntry.set_text(current.slice(0, pos - 1) + current.slice(pos));
+        calcEntry.set_position(pos - 1);
+    }
+    calcEntry.grab_focus();
+}
+
+function calcKey(label, action, cssClass) {
+    const button = new Gtk.Button({ label });
+    button.set_size_request(64, 48);
+    if (cssClass) {
+        button.add_css_class(cssClass);
+    }
+    button.connect('clicked', () => {
+        if (typeof action === 'string') {
+            calcInsert(action);
+        } else {
+            action();
+        }
+    });
+    return button;
+}
+
+function buildCalculator() {
+    const display = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        margin_bottom: 10,
+    });
+    calcEntry = new Gtk.Entry({
+        xalign: 1,
+        has_frame: false,
+        placeholder_text: '0',
+        hexpand: true,
+    });
+    calcEntry.add_css_class('title-1');
+    calcEntry.connect('changed', updateCalcResult);
+    calcEntry.connect('activate', commitCalc);
+    calcResult = new Gtk.Label({ label: '', xalign: 1 });
+    calcResult.add_css_class('title-2');
+    calcResult.add_css_class('dim-label');
+    display.append(calcEntry);
+    display.append(calcResult);
+
+    const grid = new Gtk.Grid({ row_spacing: 6, column_spacing: 6 });
+    const rows = [
+        [['sin', 'sin('], ['cos', 'cos('], ['tan', 'tan('], ['π', 'pi'], ['e', 'e']],
+        [['√', 'sqrt('], ['x²', '^2'], ['xʸ', '^'], ['(', '('], [')', ')']],
+        [['7', '7'], ['8', '8'], ['9', '9'], ['÷', '/'],
+            ['C', () => { calcEntry.set_text(''); calcResult.set_label(''); }]],
+        [['4', '4'], ['5', '5'], ['6', '6'], ['×', '*'], ['⌫', calcBackspace]],
+        [['1', '1'], ['2', '2'], ['3', '3'], ['−', '-'],
+            ['ans', () => calcInsert(lastResult || '0')]],
+        [['0', '0'], ['.', '.'], ['=', commitCalc, 'suggested-action'], ['+', '+'], ['%', '/100']],
+    ];
+    rows.forEach((row, r) => {
+        row.forEach(([label, action, cssClass], c) => {
+            grid.attach(calcKey(label, action, cssClass), c, r, 1, 1);
+        });
+    });
+
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        valign: Gtk.Align.CENTER,
+        halign: Gtk.Align.CENTER,
+        spacing: 8,
+        margin_top: 24,
+        margin_bottom: 24,
+        margin_start: 24,
+        margin_end: 24,
+    });
+    box.set_size_request(420, -1);
+    box.append(display);
+    box.append(grid);
+    return box;
+}
+
 // ---------------------------------------------------------------------- shell
 
 function buildUI() {
@@ -262,9 +381,11 @@ function buildUI() {
 
     const perspectiveMenu = new Gio.Menu();
     perspectiveMenu.append('Graphing', 'app.perspective-graphing');
+    perspectiveMenu.append('Scientific Calculator', 'app.perspective-calculator');
     const perspectiveChild = new Gtk.Box({ spacing: 6 });
     perspectiveChild.append(new Gtk.Image({ icon_name: 'view-grid-symbolic', pixel_size: 16 }));
-    perspectiveChild.append(new Gtk.Label({ label: 'Graphing' }));
+    perspectiveLabel = new Gtk.Label({ label: 'Graphing' });
+    perspectiveChild.append(perspectiveLabel);
     perspectiveChild.append(new Gtk.Image({ icon_name: 'pan-down-symbolic', pixel_size: 14 }));
     const perspectiveButton = new Gtk.MenuButton({ menu_model: perspectiveMenu });
     perspectiveButton.set_child(perspectiveChild);
@@ -426,7 +547,10 @@ function buildUI() {
 
     const toolbarView = new Adw.ToolbarView();
     toolbarView.add_top_bar(header);
-    toolbarView.set_content(split);
+    mainStack = new Gtk.Stack({ transition_type: Gtk.StackTransitionType.CROSSFADE });
+    mainStack.add_named(split, 'graphing');
+    mainStack.add_named(buildCalculator(), 'calculator');
+    toolbarView.set_content(mainStack);
 
     toastOverlay = new Adw.ToastOverlay();
     toastOverlay.set_child(toolbarView);
@@ -558,8 +682,22 @@ addAction('reset', () => { GgbApp.resetView(); redraw(); });
 addAction('undo', () => { GgbApp.undo(); refreshAlgebra(); redraw(); });
 addAction('redo', () => { GgbApp.redo(); refreshAlgebra(); redraw(); });
 addAction('perspective-graphing', () => {
-    if (stack) {
-        stack.set_visible_child_name('algebra');
+    if (mainStack) {
+        mainStack.set_visible_child_name('graphing');
+    }
+    if (perspectiveLabel) {
+        perspectiveLabel.set_label('Graphing');
+    }
+});
+addAction('perspective-calculator', () => {
+    if (mainStack) {
+        mainStack.set_visible_child_name('calculator');
+    }
+    if (perspectiveLabel) {
+        perspectiveLabel.set_label('Scientific Calculator');
+    }
+    if (calcEntry) {
+        calcEntry.grab_focus();
     }
 });
 addAction('about', () => {

@@ -7,7 +7,10 @@ import org.geogebra.common.euclidian.EuclidianController;
 import org.geogebra.common.euclidian.event.PointerEventType;
 import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.StringTemplate;
+import org.geogebra.common.kernel.arithmetic.ValidExpression;
+import org.geogebra.common.kernel.commands.EvalInfo;
 import org.geogebra.common.kernel.geos.GeoElement;
+import org.geogebra.common.kernel.geos.GeoNumeric;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
 import org.geogebra.common.main.App;
 import org.geogebra.common.main.error.ErrorHandler;
@@ -116,7 +119,65 @@ public class GjsApp {
 	public static String evalCommand(String command) {
 		Kernel kernel = app().getKernel();
 		final StringBuilder error = new StringBuilder();
-		ErrorHandler handler = new ErrorHandler() {
+		ErrorHandler handler = errorHandler(error);
+		try {
+			GeoElementND[] result = kernel.getAlgebraProcessor()
+					.processAlgebraCommandNoExceptionHandling(command, true, handler, false, null);
+			if (result == null) {
+				return error.length() > 0 ? "error: " + error : "null";
+			}
+			return "ok (" + result.length + ")";
+		} catch (Throwable t) {
+			return "error: " + t;
+		}
+	}
+
+	/**
+	 * Evaluates a self-contained expression and returns its numeric value, without
+	 * adding anything to the construction (calculator mode).
+	 *
+	 * @param expression expression, e.g. {@code sin(30)+2^3}
+	 * @return value string, or {@code "error"}
+	 */
+	@JsMethod
+	public static String evaluate(String expression) {
+		Kernel kernel = app().getKernel();
+		try {
+			ValidExpression ve = kernel.getParser().parseGeoGebraExpression(expression);
+			EvalInfo info = kernel.getAlgebraProcessor().getEvalInfo(false, true);
+			GeoElementND[] result = kernel.getAlgebraProcessor()
+					.processAlgebraCommandNoExceptionHandling(ve, false,
+							errorHandler(new StringBuilder()), null, info);
+			if (result == null || result.length == 0) {
+				return "error";
+			}
+			GeoElementND last = result[result.length - 1];
+			String value = last instanceof GeoNumeric
+					? formatNumber(((GeoNumeric) last).getDouble())
+					: last.toValueString(StringTemplate.editorTemplate);
+			for (GeoElementND geo : result) {
+				if (geo != null) {
+					geo.toGeoElement().remove();
+				}
+			}
+			return value;
+		} catch (Throwable t) {
+			return "error";
+		}
+	}
+
+	private static String formatNumber(double value) {
+		if (Double.isInfinite(value)) {
+			return value > 0 ? "∞" : "-∞";
+		}
+		if (value == Math.rint(value) && Math.abs(value) < 1e15) {
+			return String.valueOf((long) value);
+		}
+		return String.valueOf(value);
+	}
+
+	private static ErrorHandler errorHandler(StringBuilder error) {
+		return new ErrorHandler() {
 			@Override
 			public void showError(String msg) {
 				if (msg != null) {
@@ -145,16 +206,6 @@ public class GjsApp {
 				// nothing to reset
 			}
 		};
-		try {
-			GeoElementND[] result = kernel.getAlgebraProcessor()
-					.processAlgebraCommandNoExceptionHandling(command, true, handler, false, null);
-			if (result == null) {
-				return error.length() > 0 ? "error: " + error : "null";
-			}
-			return "ok (" + result.length + ")";
-		} catch (Throwable t) {
-			return "error: " + t;
-		}
 	}
 
 	/** Sets the view size. */
