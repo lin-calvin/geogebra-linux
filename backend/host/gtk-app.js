@@ -228,15 +228,8 @@ function buildUI() {
     win.set_content(toastOverlay);
     win.present();
 
-    // dark mode follows the system
-    const styleManager = Adw.StyleManager.get_default();
-    const applyTheme = () => {
-        const dark = styleManager.get_dark();
-        GgbApp.setBackground(...(dark ? [0x1e, 0x1e, 0x1e, 255] : [255, 255, 255, 255]));
-        redraw();
-    };
-    styleManager.connect('notify::dark', applyTheme);
-    applyTheme();
+    // GeoGebra has no official dark mode, so the canvas keeps its light background.
+    // The native chrome still follows the system theme via libadwaita.
 
     refreshAlgebra();
 }
