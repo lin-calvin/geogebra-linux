@@ -67,7 +67,18 @@ cp -f "$GGB/source/shared/common-jre/src/main/resources/org/geogebra/common/jre/
 echo ">>> extracting Giac CAS (wasm + emscripten glue)"
 GIAC_JAR="$(find "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2" -name 'giac-gwt-*.jar' \
   ! -name '*-sources.jar' 2>/dev/null | head -1)"
-if [ -n "$GIAC_JAR" ]; then
+if [ -z "$GIAC_JAR" ]; then
+  # our GWT module does not depend on giac-gwt directly, so on a cold CI cache
+  # the jar may not have been resolved yet - fetch it from GeoGebra's repo
+  GIAC_VERSION="${GIAC_GWT_VERSION:-70501}"
+  GIAC_JAR="${TMPDIR:-/tmp}/giac-gwt-${GIAC_VERSION}.jar"
+  if [ ! -f "$GIAC_JAR" ]; then
+    GIAC_URL="https://repo.geogebra.net/releases/fr/ujf-grenoble/giac-gwt/${GIAC_VERSION}/giac-gwt-${GIAC_VERSION}.jar"
+    echo "    not in the Gradle cache; downloading $GIAC_URL"
+    curl -fsSL "$GIAC_URL" -o "$GIAC_JAR"
+  fi
+fi
+if [ -n "$GIAC_JAR" ] && [ -f "$GIAC_JAR" ]; then
   python3 - "$GIAC_JAR" "$ROOT/backend/host" <<'PY'
 import base64, sys, zipfile
 
