@@ -1,4 +1,4 @@
-app-id: io.github.lin_calvin.GJSGebra
+app-id: io.github.lin_calvin.gjsgebra
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
@@ -20,8 +20,9 @@ modules:
       - cp ggbcanvas.nocache.js /app/share/gjsgebra/
       - mkdir -p /app/share/fonts
       - cp -a fonts/. /app/share/fonts/
-      - install -Dm644 io.github.lin_calvin.GJSGebra.desktop /app/share/applications/io.github.lin_calvin.GJSGebra.desktop
-      - install -Dm644 io.github.lin_calvin.GJSGebra.svg /app/share/icons/hicolor/scalable/apps/io.github.lin_calvin.GJSGebra.svg
+      - install -Dm644 io.github.lin_calvin.gjsgebra.desktop /app/share/applications/io.github.lin_calvin.gjsgebra.desktop
+      - install -Dm644 io.github.lin_calvin.gjsgebra.metainfo.xml /app/share/metainfo/io.github.lin_calvin.gjsgebra.metainfo.xml
+      - install -Dm644 io.github.lin_calvin.gjsgebra.svg /app/share/icons/hicolor/scalable/apps/io.github.lin_calvin.gjsgebra.svg
     sources:
       - type: dir
         path: staging

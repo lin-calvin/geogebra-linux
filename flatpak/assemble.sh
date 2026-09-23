@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WAR="$ROOT/geogebra/source/web/web/war/ggbcanvas"
 STAGING="$ROOT/flatpak/staging"
-APPID="io.github.lin_calvin.GJSGebra"
+APPID="io.github.lin_calvin.gjsgebra"
 
 if [ ! -f "$WAR/ggbcanvas.nocache.js" ]; then
   echo "error: $WAR/ggbcanvas.nocache.js not found; run backend/build.sh first" >&2
@@ -25,6 +25,7 @@ cp "$ROOT/backend/host/command.properties" "$STAGING/host/"
 cp -a "$ROOT/backend/host/fonts" "$STAGING/fonts"
 cp "$ROOT/flatpak/gjsgebra" "$STAGING/"
 cp "$ROOT/flatpak/$APPID.desktop" "$STAGING/"
+cp "$ROOT/flatpak/$APPID.metainfo.xml" "$STAGING/"
 cp "$ROOT/flatpak/$APPID.svg" "$STAGING/"
 
 echo "staged -> $STAGING"

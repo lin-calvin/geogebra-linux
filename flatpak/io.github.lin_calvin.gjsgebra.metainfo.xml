@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.lin_calvin.gjsgebra</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+
+  <name>GJSGebra</name>
+  <summary>Dynamic mathematics: graphing, geometry and algebra</summary>
+
+  <developer id="io.github.lin_calvin">
+    <name>lin_calvin</name>
+  </developer>
+
+  <description>
+    <p>
+      GJSGebra runs the GeoGebra kernel natively on Linux. The Java kernel is compiled
+      to JavaScript and executed in GJS, drawn with Cairo and Pango, inside a
+      GTK4 / libadwaita shell.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Graphing perspective with algebra view, function plotting and the tool palette</li>
+      <li>Scientific calculator with a typeset history and persistent variables</li>
+      <li>Computer algebra through Giac compiled to WebAssembly: limits, derivatives,
+        integrals, factoring and solving</li>
+      <li>Open and save .ggb files</li>
+      <li>Native GTK input: two-finger pan, pinch to zoom, mouse wheel zoom</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.lin_calvin.gjsgebra.desktop</launchable>
+
+  <url type="homepage">https://github.com/lin-calvin/geogebra-linux</url>
+  <url type="bugtracker">https://github.com/lin-calvin/geogebra-linux/issues</url>
+  <url type="vcs-browser">https://github.com/lin-calvin/geogebra-linux</url>
+
+  <categories>
+    <category>Education</category>
+    <category>Science</category>
+    <category>Math</category>
+  </categories>
+
+  <keywords>
+    <keyword>math</keyword>
+    <keyword>geometry</keyword>
+    <keyword>algebra</keyword>
+    <keyword>graph</keyword>
+    <keyword>function</keyword>
+    <keyword>plot</keyword>
+    <keyword>cas</keyword>
+  </keywords>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Graphing perspective with the algebra view</caption>
+      <image type="source">https://raw.githubusercontent.com/lin-calvin/geogebra-linux/main/flatpak/screenshots/graphing.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Scientific calculator, with the computer algebra system</caption>
+      <image type="source">https://raw.githubusercontent.com/lin-calvin/geogebra-linux/main/flatpak/screenshots/calculator.png</image>
+    </screenshot>
+  </screenshots>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-09-23">
+      <description>
+        <p>First release: graphing and scientific calculator perspectives, Giac
+          computer algebra, native GTK gestures, Flatpak packaging.</p>
+      </description>
+    </release>
+  </releases>
+</component>

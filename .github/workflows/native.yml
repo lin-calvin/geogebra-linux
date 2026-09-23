@@ -54,8 +54,8 @@ jobs:
       - name: Build Flatpak bundle
         run: |
           flatpak-builder --user --install-deps-from=flathub --force-clean \
-            --repo=flatpak/repo flatpak/build-dir flatpak/io.github.lin_calvin.GJSGebra.yml
-          flatpak build-bundle flatpak/repo GJSGebra.flatpak io.github.lin_calvin.GJSGebra
+            --repo=flatpak/repo flatpak/build-dir flatpak/io.github.lin_calvin.gjsgebra.yml
+          flatpak build-bundle flatpak/repo GJSGebra.flatpak io.github.lin_calvin.gjsgebra
 
       - name: Upload Flatpak bundle
         uses: actions/upload-artifact@v4

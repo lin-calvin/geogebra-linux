@@ -63,7 +63,7 @@ const TOOLS = [
 ];
 
 const app = new Adw.Application({
-    application_id: 'io.github.lin_calvin.GJSGebra',
+    application_id: 'io.github.lin_calvin.gjsgebra',
     flags: Gio.ApplicationFlags.NON_UNIQUE,
 });
 
