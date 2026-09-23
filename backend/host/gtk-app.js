@@ -1,6 +1,6 @@
-// GeoGebra on GTK4 + libadwaita (GJS), laid out like the official Classic app:
-// toolbar row on top, algebra panel (input + object list) on the left, graphics
-// view on the right, math keyboard at the bottom.
+// GeoGebra on GTK4 + libadwaita (GJS), laid out like the official Calculator Suite:
+//   header (menu + title + perspective) / icon rail + panel / graphics view
+// Only the Graphing perspective is implemented; other perspectives are stubs.
 import Gtk from 'gi://Gtk?version=4.0';
 import Adw from 'gi://Adw?version=1';
 import Gio from 'gi://Gio';
@@ -41,6 +41,9 @@ const TOOLS = [
     ['user-trash-symbolic', 'Delete', 6],
 ];
 
+const PERSPECTIVES = ['Graphing', 'Geometry', '3D Graphics', 'CAS', 'Spreadsheet',
+    'Probability', 'Exam Mode'];
+
 const app = new Adw.Application({
     application_id: 'org.geogebra.gjs',
     flags: Gio.ApplicationFlags.NON_UNIQUE,
@@ -50,7 +53,7 @@ let win = null;
 let area = null;
 let listBox = null;
 let algebraEntry = null;
-let keyboardRevealer = null;
+let stack = null;
 let toastOverlay = null;
 let currentPath = null;
 
@@ -113,7 +116,6 @@ function refreshAlgebra() {
             margin_start: 6,
             margin_end: 6,
         });
-        const dot = colorDot(color || '#000000');
         const labelWidget = new Gtk.Label({ label: label, width_chars: 3, xalign: 0 });
         labelWidget.add_css_class('heading');
         const valueWidget = new Gtk.Label({
@@ -131,7 +133,7 @@ function refreshAlgebra() {
             GgbApp.setVisible(label, eye.get_active());
             redraw();
         });
-        box.append(dot);
+        box.append(colorDot(color || '#000000'));
         box.append(labelWidget);
         box.append(valueWidget);
         box.append(eye);
@@ -154,128 +156,9 @@ function submitInput() {
     redraw();
 }
 
-// ------------------------------------------------------------------- keyboard
+// ------------------------------------------------------------------- panels
 
-function insertText(text) {
-    const current = algebraEntry.get_text();
-    const pos = algebraEntry.get_position();
-    algebraEntry.set_text(current.slice(0, pos) + text + current.slice(pos));
-    algebraEntry.set_position(pos + text.length);
-    algebraEntry.grab_focus();
-}
-
-function backspace() {
-    const current = algebraEntry.get_text();
-    const pos = algebraEntry.get_position();
-    if (pos > 0) {
-        algebraEntry.set_text(current.slice(0, pos - 1) + current.slice(pos));
-        algebraEntry.set_position(pos - 1);
-    }
-    algebraEntry.grab_focus();
-}
-
-function key(label, action) {
-    const button = new Gtk.Button({ label });
-    button.set_size_request(44, 40);
-    button.connect('clicked', () => {
-        if (typeof action === 'string') {
-            insertText(action);
-        } else {
-            action();
-        }
-    });
-    return button;
-}
-
-function keyboardRow(keys) {
-    const row = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, homogeneous: true });
-    for (const [label, action] of keys) {
-        row.append(key(label, action));
-    }
-    return row;
-}
-
-function buildKeyboard() {
-    const box = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        spacing: 6,
-        margin_top: 8,
-        margin_bottom: 8,
-        margin_start: 12,
-        margin_end: 12,
-    });
-    box.append(keyboardRow([
-        ['x', 'x'], ['y', 'y'], ['z', 'z'], ['π', 'pi'], ['7', '7'], ['8', '8'], ['9', '9'], ['×', '*'], ['÷', '/'],
-    ]));
-    box.append(keyboardRow([
-        ['x²', '^2'], ['√', 'sqrt('], ['(', '('], [')', ')'], ['4', '4'], ['5', '5'], ['6', '6'], ['+', '+'], ['−', '-'],
-    ]));
-    box.append(keyboardRow([
-        ['≤', '<='], ['≥', '>='], ['<', '<'], ['>', '>'], ['1', '1'], ['2', '2'], ['3', '3'], ['=', '='], ['⌫', backspace],
-    ]));
-    box.append(keyboardRow([
-        ['ans', 'ans'], [',', ','], ['.', '.'], ['←', () => algebraEntry.set_position(Math.max(0, algebraEntry.get_position() - 1))],
-        ['→', () => algebraEntry.set_position(algebraEntry.get_position() + 1)],
-        ['↵', submitInput],
-    ]));
-    return box;
-}
-
-// ---------------------------------------------------------------------- shell
-
-function toolButton(iconName, tooltip, mode) {
-    const button = new Gtk.ToggleButton({ icon_name: iconName, tooltip_text: tooltip });
-    button.add_css_class('flat');
-    button.connect('clicked', () => GgbApp.setMode(mode));
-    return button;
-}
-
-function buildUI() {
-    // --- top toolbar (like the official app) ---
-    const header = new Adw.HeaderBar();
-    header.add_css_class('flat');
-
-    const tools = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 0 });
-    tools.add_css_class('linked');
-    for (const [icon, tip, mode] of TOOLS) {
-        tools.append(toolButton(icon, tip, mode));
-    }
-    header.pack_start(tools);
-
-    const menu = new Gio.Menu();
-    menu.append('New', 'app.new');
-    menu.append('Open…', 'app.open');
-    menu.append('Save', 'app.save');
-    menu.append('Save As…', 'app.save-as');
-    menu.append('Zoom In', 'app.zoom-in');
-    menu.append('Zoom Out', 'app.zoom-out');
-    menu.append('Reset View', 'app.reset');
-    menu.append('Undo', 'app.undo');
-    menu.append('Redo', 'app.redo');
-    menu.append('About GeoGebra', 'app.about');
-    const menuButton = new Gtk.MenuButton({
-        icon_name: 'open-menu-symbolic',
-        menu_model: menu,
-        tooltip_text: 'Menu',
-    });
-    menuButton.add_css_class('flat');
-    header.pack_end(menuButton);
-
-    const redoButton = new Gtk.Button({ icon_name: 'edit-redo-symbolic', tooltip_text: 'Redo' });
-    redoButton.add_css_class('flat');
-    redoButton.connect('clicked', () => { GgbApp.redo(); refreshAlgebra(); redraw(); });
-    header.pack_end(redoButton);
-
-    const undoButton = new Gtk.Button({ icon_name: 'edit-undo-symbolic', tooltip_text: 'Undo' });
-    undoButton.add_css_class('flat');
-    undoButton.connect('clicked', () => { GgbApp.undo(); refreshAlgebra(); redraw(); });
-    header.pack_end(undoButton);
-
-    const keyboardButton = new Gtk.ToggleButton({ icon_name: 'input-keyboard-symbolic', tooltip_text: 'Keyboard' });
-    keyboardButton.add_css_class('flat');
-    header.pack_end(keyboardButton);
-
-    // --- algebra panel (input on top, object list below) ---
+function buildAlgebraPanel() {
     const inputRow = new Gtk.Box({
         orientation: Gtk.Orientation.HORIZONTAL,
         spacing: 4,
@@ -296,12 +179,170 @@ function buildUI() {
     const scrolled = new Gtk.ScrolledWindow({ vexpand: true });
     scrolled.set_child(listBox);
 
-    const algebraBox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
-    algebraBox.append(inputRow);
-    algebraBox.append(new Gtk.Separator({ orientation: Gtk.Orientation.HORIZONTAL }));
-    algebraBox.append(scrolled);
+    const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
+    box.append(inputRow);
+    box.append(new Gtk.Separator({ orientation: Gtk.Orientation.HORIZONTAL }));
+    box.append(scrolled);
+    return box;
+}
 
-    // --- graphics view + zoom buttons ---
+function buildToolsPanel() {
+    const flow = new Gtk.FlowBox({
+        margin_top: 8,
+        margin_bottom: 8,
+        margin_start: 8,
+        margin_end: 8,
+        row_spacing: 6,
+        column_spacing: 6,
+        selection_mode: Gtk.SelectionMode.NONE,
+        max_children_per_line: 3,
+    });
+    for (const [icon, label, mode] of TOOLS) {
+        const button = new Gtk.Button();
+        const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
+        box.append(new Gtk.Image({ icon_name: icon, pixel_size: 24 }));
+        box.append(new Gtk.Label({ label, wrap: true, justify: Gtk.Justification.CENTER }));
+        button.set_child(box);
+        button.set_size_request(84, 72);
+        button.connect('clicked', () => GgbApp.setMode(mode));
+        flow.append(button);
+    }
+    const scrolled = new Gtk.ScrolledWindow({ vexpand: true });
+    scrolled.set_child(flow);
+    return scrolled;
+}
+
+function buildPlaceholder(text) {
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        valign: Gtk.Align.CENTER,
+        halign: Gtk.Align.CENTER,
+        spacing: 6,
+    });
+    box.append(new Gtk.Image({ icon_name: 'emblem-documents-symbolic', pixel_size: 48 }));
+    box.append(new Gtk.Label({ label: text }));
+    const hint = new Gtk.Label({ label: 'Coming soon' });
+    hint.add_css_class('dim-label');
+    box.append(hint);
+    return box;
+}
+
+// ------------------------------------------------------------------- rail
+
+function railButton(iconName, label) {
+    const button = new Gtk.ToggleButton();
+    button.add_css_class('flat');
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        margin_top: 6,
+        margin_bottom: 6,
+    });
+    box.append(new Gtk.Image({ icon_name: iconName, pixel_size: 20 }));
+    const text = new Gtk.Label({ label });
+    text.add_css_class('caption');
+    box.append(text);
+    button.set_child(box);
+    button.set_tooltip_text(label);
+    return button;
+}
+
+// ---------------------------------------------------------------------- shell
+
+function buildUI() {
+    const header = new Adw.HeaderBar();
+    header.add_css_class('flat');
+    // no centred title (the title lives on the left, next to the menu)
+    header.set_title_widget(new Gtk.Box());
+
+    // left: main menu
+    const menu = new Gio.Menu();
+    menu.append('New', 'app.new');
+    menu.append('Open…', 'app.open');
+    menu.append('Save', 'app.save');
+    menu.append('Save As…', 'app.save-as');
+    menu.append('Zoom In', 'app.zoom-in');
+    menu.append('Zoom Out', 'app.zoom-out');
+    menu.append('Reset View', 'app.reset');
+    menu.append('Undo', 'app.undo');
+    menu.append('Redo', 'app.redo');
+    menu.append('About GeoGebra', 'app.about');
+    const menuButton = new Gtk.MenuButton({
+        icon_name: 'open-menu-symbolic',
+        menu_model: menu,
+        tooltip_text: 'Menu',
+    });
+    menuButton.add_css_class('flat');
+    header.pack_start(menuButton);
+
+    // title + perspective dropdown
+    const title = new Gtk.Label({ label: 'GeoGebra' });
+    title.add_css_class('title-4');
+    const subtitle = new Gtk.Label({ label: 'Calculator Suite' });
+    subtitle.add_css_class('dim-label');
+    subtitle.add_css_class('title-4');
+    header.pack_start(title);
+    header.pack_start(subtitle);
+
+    const perspectiveMenu = new Gio.Menu();
+    perspectiveMenu.append('Graphing', 'app.perspective-graphing');
+    for (const name of PERSPECTIVES.slice(1)) {
+        perspectiveMenu.append(name, 'app.perspective-soon');
+    }
+    const perspectiveChild = new Gtk.Box({ spacing: 6 });
+    perspectiveChild.append(new Gtk.Image({ icon_name: 'view-grid-symbolic', pixel_size: 16 }));
+    perspectiveChild.append(new Gtk.Label({ label: 'Graphing' }));
+    perspectiveChild.append(new Gtk.Image({ icon_name: 'pan-down-symbolic', pixel_size: 14 }));
+    const perspectiveButton = new Gtk.MenuButton({ menu_model: perspectiveMenu });
+    perspectiveButton.set_child(perspectiveChild);
+    perspectiveButton.add_css_class('pill');
+    perspectiveButton.set_margin_start(12);
+    header.pack_start(perspectiveButton);
+
+    // --- rail + panel stack ---
+    stack = new Gtk.Stack({
+        transition_type: Gtk.StackTransitionType.CROSSFADE,
+        hexpand: true,
+        vexpand: true,
+    });
+    stack.add_named(buildAlgebraPanel(), 'algebra');
+    stack.add_named(buildToolsPanel(), 'tools');
+    stack.add_named(buildPlaceholder('Table of values'), 'table');
+    stack.add_named(buildPlaceholder('Spreadsheet'), 'spreadsheet');
+
+    const rail = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 2 });
+    rail.add_css_class('toolbar');
+    rail.set_size_request(72, -1);
+    const railItems = [
+        ['view-grid-symbolic', 'Algebra', 'algebra'],
+        ['applications-science-symbolic', 'Tools', 'tools'],
+        ['view-list-symbolic', 'Table', 'table'],
+        ['x-office-spreadsheet-symbolic', 'Spreadsheet', 'spreadsheet'],
+    ];
+    let firstRailButton = null;
+    for (const [icon, label, name] of railItems) {
+        const button = railButton(icon, label);
+        if (firstRailButton === null) {
+            firstRailButton = button;
+        } else {
+            button.set_group(firstRailButton);
+        }
+        button.connect('toggled', () => {
+            if (button.get_active()) {
+                stack.set_visible_child_name(name);
+            }
+        });
+        rail.append(button);
+    }
+    firstRailButton.set_active(true);
+
+    const sidebar = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL });
+    sidebar.set_size_request(400, -1);
+    sidebar.append(rail);
+    sidebar.append(new Gtk.Separator({ orientation: Gtk.Orientation.VERTICAL }));
+    sidebar.append(stack);
+
+    // --- graphics view ---
     area = new Gtk.DrawingArea();
     area.set_hexpand(true);
     area.set_vexpand(true);
@@ -310,6 +351,49 @@ function buildUI() {
         GgbApp.drawOn(contextForCr(cr, width, height), width, height);
     });
 
+    const overlay = new Gtk.Overlay();
+    overlay.set_child(area);
+
+    // settings gear (top right)
+    const gearPopover = new Gtk.Popover();
+    const gearBox = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        margin_top: 8,
+        margin_bottom: 8,
+        margin_start: 8,
+        margin_end: 8,
+    });
+    const gridToggle = new Gtk.CheckButton({ label: 'Show grid', active: true });
+    gridToggle.connect('toggled', () => {
+        GgbApp.evalCommand('ShowGrid(' + gridToggle.get_active() + ')');
+        redraw();
+    });
+    const axesToggle = new Gtk.CheckButton({ label: 'Show axes', active: true });
+    axesToggle.connect('toggled', () => {
+        GgbApp.evalCommand('ShowAxes(' + axesToggle.get_active() + ')');
+        redraw();
+    });
+    const resetButton = new Gtk.Button({ label: 'Reset view' });
+    resetButton.connect('clicked', () => {
+        GgbApp.resetView();
+        redraw();
+        gearPopover.popdown();
+    });
+    gearBox.append(gridToggle);
+    gearBox.append(axesToggle);
+    gearBox.append(resetButton);
+    gearPopover.set_child(gearBox);
+    const gearButton = new Gtk.MenuButton({ icon_name: 'emblem-system-symbolic', tooltip_text: 'Settings' });
+    gearButton.set_popover(gearPopover);
+    gearButton.add_css_class('flat');
+    gearButton.set_halign(Gtk.Align.END);
+    gearButton.set_valign(Gtk.Align.START);
+    gearButton.set_margin_top(8);
+    gearButton.set_margin_end(10);
+    overlay.add_overlay(gearButton);
+
+    // zoom buttons (right, centred)
     const zoomBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 6,
@@ -322,14 +406,11 @@ function buildUI() {
     zoomIn.connect('clicked', () => { GgbApp.zoomIn(); redraw(); });
     const zoomOut = new Gtk.Button({ icon_name: 'zoom-out-symbolic', tooltip_text: 'Zoom out' });
     zoomOut.connect('clicked', () => { GgbApp.zoomOut(); redraw(); });
-    const fullscreen = new Gtk.Button({ icon_name: 'view-fullscreen-symbolic', tooltip_text: 'Reset view' });
-    fullscreen.connect('clicked', () => { GgbApp.resetView(); redraw(); });
+    const resetView = new Gtk.Button({ icon_name: 'view-fullscreen-symbolic', tooltip_text: 'Reset view' });
+    resetView.connect('clicked', () => { GgbApp.resetView(); redraw(); });
     zoomBox.append(zoomIn);
     zoomBox.append(zoomOut);
-    zoomBox.append(fullscreen);
-
-    const overlay = new Gtk.Overlay();
-    overlay.set_child(area);
+    zoomBox.append(resetView);
     overlay.add_overlay(zoomBox);
 
     // interaction: press / drag / release
@@ -370,22 +451,13 @@ function buildUI() {
 
     const split = new Adw.OverlaySplitView();
     split.set_show_sidebar(true);
-    split.set_sidebar_width_fraction(0.3);
-    const sidebar = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
-    sidebar.set_size_request(320, -1);
-    sidebar.append(algebraBox);
+    split.set_sidebar_width_fraction(0.36);
     split.set_sidebar(sidebar);
     split.set_content(overlay);
-
-    // --- math keyboard (bottom, toggleable) ---
-    keyboardRevealer = new Gtk.Revealer({ transition_type: Gtk.RevealerTransitionType.SLIDE_UP });
-    keyboardRevealer.set_child(buildKeyboard());
-    keyboardButton.connect('toggled', () => keyboardRevealer.set_reveal_child(keyboardButton.get_active()));
 
     const toolbarView = new Adw.ToolbarView();
     toolbarView.add_top_bar(header);
     toolbarView.set_content(split);
-    toolbarView.add_bottom_bar(keyboardRevealer);
 
     toastOverlay = new Adw.ToastOverlay();
     toastOverlay.set_child(toolbarView);
@@ -393,8 +465,8 @@ function buildUI() {
     win = new Adw.ApplicationWindow({
         application: app,
         title: 'GeoGebra',
-        default_width: 1100,
-        default_height: 720,
+        default_width: 1180,
+        default_height: 760,
     });
     win.set_content(toastOverlay);
     win.present();
@@ -516,6 +588,12 @@ addAction('zoom-out', () => { GgbApp.zoomOut(); redraw(); });
 addAction('reset', () => { GgbApp.resetView(); redraw(); });
 addAction('undo', () => { GgbApp.undo(); refreshAlgebra(); redraw(); });
 addAction('redo', () => { GgbApp.redo(); refreshAlgebra(); redraw(); });
+addAction('perspective-graphing', () => {
+    if (stack) {
+        stack.set_visible_child_name('algebra');
+    }
+});
+addAction('perspective-soon', () => toast('This perspective is coming soon'));
 addAction('about', () => {
     const about = new Adw.AboutWindow({
         application_name: 'GeoGebra (GJS)',
