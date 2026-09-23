@@ -25,7 +25,7 @@ fi
 echo ">>> applying low-memory build settings"
 sed -i 's/^org.gradle.parallel=.*/org.gradle.parallel=false/' \
   "$GGB/gradle.properties" "$GGB/source/web/gradle.properties"
-sed -i 's#^org.gradle.jvmargs=.*#org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8#' \
+sed -i 's#^org.gradle.jvmargs=.*#org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Djava.awt.headless=true#' \
   "$GGB/gradle.properties" "$GGB/source/web/gradle.properties"
 sed -i 's/maxHeapSize = "4096m"/maxHeapSize = "3072m"/' \
   "$GGB/source/build-logic/convention/src/main/kotlin/gwt-conventions.gradle.kts"
