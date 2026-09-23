@@ -56,7 +56,8 @@ let toastOverlay = null;
 let currentPath = null;
 let perspectiveLabel = null;
 let calcEntry = null;
-let calcResult = null;
+let historyBox = null;
+let historyScroll = null;
 let lastResult = '';
 
 function redraw() {
@@ -234,116 +235,78 @@ function railButton(iconName, label) {
 
 // ------------------------------------------------------------- calculator
 
-function updateCalcResult() {
-    const text = calcEntry.get_text().trim();
-    if (!text) {
-        calcResult.set_label('');
-        return;
+function appendHistory(expression, result) {
+    const item = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        margin_top: 6,
+        margin_bottom: 6,
+        margin_start: 12,
+        margin_end: 12,
+    });
+    const expressionLabel = new Gtk.Label({ label: expression, xalign: 1, selectable: true });
+    expressionLabel.add_css_class('dim-label');
+    expressionLabel.set_wrap(true);
+    const resultLabel = new Gtk.Label({
+        label: result === 'error' ? '?' : result,
+        xalign: 1,
+        selectable: true,
+    });
+    resultLabel.add_css_class('title-3');
+    if (result === 'error') {
+        resultLabel.add_css_class('error');
     }
-    const result = GgbApp.evaluate(text);
-    calcResult.set_label(result === 'error' ? '' : result);
+    item.append(expressionLabel);
+    item.append(resultLabel);
+    historyBox.append(item);
 }
 
-function commitCalc() {
+function scrollHistoryToBottom() {
+    GLib.idle_add(() => {
+        if (historyScroll) {
+            const adjustment = historyScroll.get_vadjustment();
+            adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size());
+        }
+        return GLib.SOURCE_REMOVE;
+    });
+}
+
+function submitRepl() {
     const text = calcEntry.get_text().trim();
     if (!text) {
         return;
     }
-    const result = GgbApp.evaluate(text);
+    const expression = text.replace(/\bans\b/g, lastResult || '0');
+    const result = GgbApp.evaluate(expression);
     if (result !== 'error') {
         lastResult = result;
-        calcEntry.set_text(result);
-        calcEntry.set_position(-1);
-        calcResult.set_label('');
     }
-}
-
-function calcInsert(text) {
-    const current = calcEntry.get_text();
-    const pos = calcEntry.get_position();
-    calcEntry.set_text(current.slice(0, pos) + text + current.slice(pos));
-    calcEntry.set_position(pos + text.length);
-    calcEntry.grab_focus();
-}
-
-function calcBackspace() {
-    const current = calcEntry.get_text();
-    const pos = calcEntry.get_position();
-    if (pos > 0) {
-        calcEntry.set_text(current.slice(0, pos - 1) + current.slice(pos));
-        calcEntry.set_position(pos - 1);
-    }
-    calcEntry.grab_focus();
-}
-
-function calcKey(label, action, cssClass) {
-    const button = new Gtk.Button({ label });
-    button.set_size_request(64, 48);
-    if (cssClass) {
-        button.add_css_class(cssClass);
-    }
-    button.connect('clicked', () => {
-        if (typeof action === 'string') {
-            calcInsert(action);
-        } else {
-            action();
-        }
-    });
-    return button;
+    appendHistory(text, result);
+    calcEntry.set_text('');
+    scrollHistoryToBottom();
 }
 
 function buildCalculator() {
-    const display = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        spacing: 2,
-        margin_bottom: 10,
-    });
+    historyBox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 0 });
+    historyScroll = new Gtk.ScrolledWindow({ vexpand: true, hexpand: true });
+    historyScroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
+    historyScroll.set_child(historyBox);
+
     calcEntry = new Gtk.Entry({
-        xalign: 1,
-        has_frame: false,
-        placeholder_text: '0',
-        hexpand: true,
+        placeholder_text: 'Enter an expression…   e.g.  sin(30)+2^3',
+        margin_top: 8,
+        margin_bottom: 12,
+        margin_start: 12,
+        margin_end: 12,
     });
-    calcEntry.add_css_class('title-1');
-    calcEntry.connect('changed', updateCalcResult);
-    calcEntry.connect('activate', commitCalc);
-    calcResult = new Gtk.Label({ label: '', xalign: 1 });
-    calcResult.add_css_class('title-2');
-    calcResult.add_css_class('dim-label');
-    display.append(calcEntry);
-    display.append(calcResult);
+    calcEntry.connect('activate', submitRepl);
 
-    const grid = new Gtk.Grid({ row_spacing: 6, column_spacing: 6 });
-    const rows = [
-        [['sin', 'sin('], ['cos', 'cos('], ['tan', 'tan('], ['π', 'pi'], ['e', 'e']],
-        [['√', 'sqrt('], ['x²', '^2'], ['xʸ', '^'], ['(', '('], [')', ')']],
-        [['7', '7'], ['8', '8'], ['9', '9'], ['÷', '/'],
-            ['C', () => { calcEntry.set_text(''); calcResult.set_label(''); }]],
-        [['4', '4'], ['5', '5'], ['6', '6'], ['×', '*'], ['⌫', calcBackspace]],
-        [['1', '1'], ['2', '2'], ['3', '3'], ['−', '-'],
-            ['ans', () => calcInsert(lastResult || '0')]],
-        [['0', '0'], ['.', '.'], ['=', commitCalc, 'suggested-action'], ['+', '+'], ['%', '/100']],
-    ];
-    rows.forEach((row, r) => {
-        row.forEach(([label, action, cssClass], c) => {
-            grid.attach(calcKey(label, action, cssClass), c, r, 1, 1);
-        });
-    });
-
-    const box = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        valign: Gtk.Align.CENTER,
-        halign: Gtk.Align.CENTER,
-        spacing: 8,
-        margin_top: 24,
-        margin_bottom: 24,
-        margin_start: 24,
-        margin_end: 24,
-    });
-    box.set_size_request(420, -1);
-    box.append(display);
-    box.append(grid);
-    return box;
+    const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 0 });
+    box.append(historyScroll);
+    box.append(calcEntry);
+    const clamp = new Adw.Clamp({ maximum_size: 760, tightening_threshold: 600 });
+    clamp.set_child(box);
+    return clamp;
 }
 
 // ---------------------------------------------------------------------- shell
