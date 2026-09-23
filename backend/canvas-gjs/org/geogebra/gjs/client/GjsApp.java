@@ -10,6 +10,7 @@ import org.geogebra.common.kernel.StringTemplate;
 import org.geogebra.common.kernel.geos.GeoElement;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
 import org.geogebra.common.main.App;
+import org.geogebra.common.main.error.ErrorHandler;
 
 import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
@@ -99,10 +100,43 @@ public class GjsApp {
 	@JsMethod
 	public static String evalCommand(String command) {
 		Kernel kernel = app().getKernel();
+		final StringBuilder error = new StringBuilder();
+		ErrorHandler handler = new ErrorHandler() {
+			@Override
+			public void showError(String msg) {
+				if (msg != null) {
+					error.append(msg);
+				}
+			}
+
+			@Override
+			public void showCommandError(String cmd, String message) {
+				error.append(message);
+			}
+
+			@Override
+			public String getCurrentCommand() {
+				return null;
+			}
+
+			@Override
+			public boolean onUndefinedVariables(String string,
+					org.geogebra.common.util.AsyncOperation<String[]> callback) {
+				return false;
+			}
+
+			@Override
+			public void resetError() {
+				// nothing to reset
+			}
+		};
 		try {
-			GeoElementND[] result =
-					kernel.getAlgebraProcessor().processAlgebraCommand(command, true);
-			return result == null ? "null" : "ok (" + result.length + ")";
+			GeoElementND[] result = kernel.getAlgebraProcessor()
+					.processAlgebraCommandNoExceptionHandling(command, true, handler, false, null);
+			if (result == null) {
+				return error.length() > 0 ? "error: " + error : "null";
+			}
+			return "ok (" + result.length + ")";
 		} catch (Throwable t) {
 			return "error: " + t;
 		}

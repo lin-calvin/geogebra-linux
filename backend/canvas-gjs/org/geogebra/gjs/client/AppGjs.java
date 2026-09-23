@@ -37,6 +37,7 @@ import org.geogebra.common.util.GTimer;
 import org.geogebra.common.util.GTimerListener;
 import org.geogebra.common.util.ImageManager;
 import org.geogebra.common.util.StringUtil;
+import org.geogebra.common.util.debug.Log;
 
 /**
  * Headless GeoGebra app wired to the GTK/Cairo backend.
@@ -61,6 +62,17 @@ public class AppGjs extends App {
 		// the web app does this in AppW; without it RegExp.compile() NPEs
 		org.geogebra.regexp.shared.RegExpFactory.setPrototypeIfNull(
 				new org.geogebra.regexp.client.NativeRegExpFactory());
+		Log.setLogger(new Log() {
+			@Override
+			public void print(Log.Level level, Object logEntry) {
+				HostGraphics.log("[" + level + "] " + logEntry);
+				if (logEntry instanceof Throwable) {
+					for (StackTraceElement element : ((Throwable) logEntry).getStackTrace()) {
+						HostGraphics.log("    at " + element);
+					}
+				}
+			}
+		});
 		initKernel();
 		localization.setApp(this);
 		initLocalization();
@@ -405,7 +417,7 @@ public class AppGjs extends App {
 
 	@Override
 	public GeoElementGraphicsAdapter newGeoElementGraphicsAdapter() {
-		return null;
+		return new GeoElementGraphicsAdapterGjs(this);
 	}
 
 	@Override

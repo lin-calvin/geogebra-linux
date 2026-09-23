@@ -17,6 +17,7 @@
 
 	<set-property name="gwt.uncaughtexceptionhandler.windowonerror" value="IGNORE" />
 	<set-property name="gwt.logging.enabled" value="FALSE" />
+	<set-property name="compiler.stackMode" value="emulated" />
 	<collapse-all-properties />
 	<add-linker name="sso" />
 </module>
