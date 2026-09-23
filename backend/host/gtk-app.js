@@ -8,6 +8,7 @@ import GLib from 'gi://GLib';
 import { installBrowserShim } from './shim.js';
 import { installCairoHost, contextForCr } from './cairo-host.js';
 import { readGgb, writeGgb } from './ggbfile.js';
+import { loadFunctions } from './functions.js';
 
 const modulePath = ARGV[0];
 if (!modulePath) {
@@ -28,6 +29,8 @@ GgbApp.init();
 GgbApp.evalCommand('A=(1,2)');
 GgbApp.evalCommand('f(x)=x^2');
 GgbApp.evalCommand('s=Line(A,(3,1))');
+
+const FUNCTIONS = loadFunctions(import.meta.url);
 
 // GeoGebra tool modes (EuclidianConstants)
 const TOOLS = [
@@ -96,6 +99,26 @@ function colorDot(hex) {
     return dot;
 }
 
+function textColor() {
+    return Adw.StyleManager.get_default().get_dark() ? [230, 230, 230] : [0, 0, 0];
+}
+
+function latexWidget(latex, size, rgb) {
+    const parts = GgbApp.measureLatex(latex, size).split(',').map(Number);
+    const width = Math.max(1, Math.ceil(parts[0]));
+    const height = Math.max(1, Math.ceil(parts[1]));
+    const area = new Gtk.DrawingArea({
+        width_request: width + 4,
+        height_request: height + 8,
+    });
+    area.set_valign(Gtk.Align.CENTER);
+    area.set_draw_func((widget, cr, w, h) => {
+        GgbApp.drawLatex(contextForCr(cr, w, h), latex, size, 2, 2,
+            rgb[0], rgb[1], rgb[2]);
+    });
+    return area;
+}
+
 function refreshAlgebra() {
     if (!listBox) {
         return;
@@ -109,7 +132,7 @@ function refreshAlgebra() {
         return;
     }
     for (const line of rows.split('\n')) {
-        const [label, value, visible, color] = line.split('\t');
+        const [label, , visible, color, latex] = line.split('\t');
         const row = new Gtk.ListBoxRow();
         const box = new Gtk.Box({
             orientation: Gtk.Orientation.HORIZONTAL,
@@ -121,12 +144,9 @@ function refreshAlgebra() {
         });
         const labelWidget = new Gtk.Label({ label: label, width_chars: 3, xalign: 0 });
         labelWidget.add_css_class('heading');
-        const valueWidget = new Gtk.Label({
-            label: value === undefined ? '' : value,
-            xalign: 0,
-            hexpand: true,
-            ellipsize: 3,
-        });
+        const formula = latexWidget(latex || label, 15, textColor());
+        formula.set_hexpand(true);
+        formula.set_halign(Gtk.Align.START);
         const eye = new Gtk.ToggleButton({
             icon_name: visible === '0' ? 'view-hidden-symbolic' : 'view-visible-symbolic',
             active: visible !== '0',
@@ -138,7 +158,7 @@ function refreshAlgebra() {
         });
         box.append(colorDot(color || '#000000'));
         box.append(labelWidget);
-        box.append(valueWidget);
+        box.append(formula);
         box.append(eye);
         row.set_child(box);
         listBox.append(row);
@@ -176,6 +196,7 @@ function buildAlgebraPanel() {
     algebraEntry.connect('activate', submitInput);
     inputRow.append(plus);
     inputRow.append(algebraEntry);
+    inputRow.append(buildFunctionSelector((name) => insertInto(algebraEntry, name + '(')));
 
     listBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
     listBox.add_css_class('navigation-sidebar');
@@ -244,20 +265,18 @@ function appendHistory(expression, result) {
         margin_start: 12,
         margin_end: 12,
     });
-    const expressionLabel = new Gtk.Label({ label: expression, xalign: 1, selectable: true });
-    expressionLabel.add_css_class('dim-label');
-    expressionLabel.set_wrap(true);
-    const resultLabel = new Gtk.Label({
-        label: result === 'error' ? '?' : result,
-        xalign: 1,
-        selectable: true,
-    });
-    resultLabel.add_css_class('title-3');
+    const expressionWidget = latexWidget(GgbApp.toLatex(expression), 18, [128, 128, 128]);
+    expressionWidget.set_halign(Gtk.Align.END);
+    item.append(expressionWidget);
     if (result === 'error') {
-        resultLabel.add_css_class('error');
+        const errorLabel = new Gtk.Label({ label: '?', xalign: 1 });
+        errorLabel.add_css_class('error');
+        item.append(errorLabel);
+    } else {
+        const resultWidget = latexWidget(result, 18, textColor());
+        resultWidget.set_halign(Gtk.Align.END);
+        item.append(resultWidget);
     }
-    item.append(expressionLabel);
-    item.append(resultLabel);
     historyBox.append(item);
 }
 
@@ -294,19 +313,115 @@ function buildCalculator() {
 
     calcEntry = new Gtk.Entry({
         placeholder_text: 'Enter an expression…   e.g.  sin(30)+2^3',
+        hexpand: true,
+    });
+    calcEntry.connect('activate', submitRepl);
+
+    const calcInputRow = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 6,
         margin_top: 8,
         margin_bottom: 12,
         margin_start: 12,
         margin_end: 12,
     });
-    calcEntry.connect('activate', submitRepl);
+    calcInputRow.append(calcEntry);
+    calcInputRow.append(buildFunctionSelector((name) => insertInto(calcEntry, name + '(')));
 
     const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 0 });
     box.append(historyScroll);
-    box.append(calcEntry);
+    box.append(calcInputRow);
     const clamp = new Adw.Clamp({ maximum_size: 760, tightening_threshold: 600 });
     clamp.set_child(box);
     return clamp;
+}
+
+// ------------------------------------------------------ function selector
+
+function buildFunctionSelector(onPick) {
+    const listBox = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
+    const names = new Map();
+    const search = new Gtk.SearchEntry({ placeholder_text: 'Search functions…' });
+    const scrolled = new Gtk.ScrolledWindow({ vexpand: true });
+    scrolled.set_child(listBox);
+    scrolled.set_size_request(380, 340);
+
+    const fill = (filter) => {
+        let child;
+        while ((child = listBox.get_first_child())) {
+            listBox.remove(child);
+        }
+        names.clear();
+        const lower = (filter || '').toLowerCase();
+        for (const entry of FUNCTIONS) {
+            if (lower && !entry.name.toLowerCase().includes(lower)) {
+                continue;
+            }
+            const row = new Gtk.ListBoxRow();
+            const box = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 10,
+                margin_top: 3,
+                margin_bottom: 3,
+                margin_start: 8,
+                margin_end: 8,
+            });
+            const nameLabel = new Gtk.Label({ label: entry.name, width_chars: 16, xalign: 0 });
+            nameLabel.add_css_class('heading');
+            const syntaxLabel = new Gtk.Label({
+                label: entry.syntaxes[0] || '',
+                xalign: 0,
+                hexpand: true,
+                ellipsize: 3,
+            });
+            syntaxLabel.add_css_class('dim-label');
+            box.append(nameLabel);
+            box.append(syntaxLabel);
+            row.set_child(box);
+            names.set(row, entry.name);
+            listBox.append(row);
+            if (names.size >= 300) {
+                break;
+            }
+        }
+    };
+    fill('');
+
+    search.connect('search-changed', () => fill(search.get_text()));
+    search.connect('activate', () => {
+        const first = listBox.get_row_at_index(0);
+        if (first) {
+            onPick(names.get(first));
+        }
+    });
+    listBox.connect('row-activated', (lb, row) => onPick(names.get(row)));
+
+    const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 6 });
+    box.append(search);
+    box.append(scrolled);
+    const popover = new Gtk.Popover();
+    popover.set_child(box);
+
+    const button = new Gtk.MenuButton({ tooltip_text: 'Functions' });
+    const label = new Gtk.Label({ label: 'ƒx' });
+    label.add_css_class('heading');
+    button.set_child(label);
+    button.add_css_class('flat');
+    button.set_popover(popover);
+    button.connect('notify::active', () => {
+        if (button.get_active()) {
+            search.grab_focus();
+        }
+    });
+    return button;
+}
+
+function insertInto(entry, text) {
+    const current = entry.get_text();
+    const pos = entry.get_position();
+    entry.set_text(current.slice(0, pos) + text + current.slice(pos));
+    entry.set_position(pos + text.length);
+    entry.grab_focus();
 }
 
 // ---------------------------------------------------------------------- shell

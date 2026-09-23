@@ -48,9 +48,13 @@ public class GjsApp {
 		// Install our GTK/Cairo factory FIRST: FactoryProviderGWT.ensureLoaded() would
 		// otherwise claim the AwtFactory prototype with the web canvas one.
 		AwtFactory.setPrototypeIfNull(new AwtFactoryGjs());
-		// JLaTeXMath's static initializers need its platform factory; the web build
-		// does this in its entry points (FactoryProviderGWT.ensureLoaded()).
-		com.himamis.retex.renderer.web.FactoryProviderGWT.ensureLoaded();
+		// JLaTeXMath renders through our Cairo backend (not the web canvas one).
+		com.himamis.retex.renderer.share.platform.FactoryProvider factoryProvider =
+				com.himamis.retex.renderer.share.platform.FactoryProvider.getInstance();
+		if (factoryProvider == null) {
+			com.himamis.retex.renderer.share.platform.FactoryProvider
+					.setInstance(new FactoryProviderGjs());
+		}
 		app();
 	}
 
@@ -95,7 +99,8 @@ public class GjsApp {
 			sb.append(geo.getLabelSimple()).append('\t')
 					.append(geo.toValueString(StringTemplate.defaultTemplate)).append('\t')
 					.append(geo.isEuclidianVisible() ? "1" : "0").append('\t')
-					.append(colorHex(geo.getObjectColor()));
+					.append(colorHex(geo.getObjectColor())).append('\t')
+					.append(geo.toLaTeXString(false, StringTemplate.latexTemplate));
 		}
 		return sb.toString();
 	}
@@ -260,6 +265,107 @@ public class GjsApp {
 		EuclidianViewGjs view = view();
 		view.setPreferredSize(AwtFactory.getPrototype().newDimension(width, height));
 		view.updateSize();
+	}
+
+	/**
+	 * Spike: renders a LaTeX formula to a PNG via JLaTeXMath + Cairo.
+	 *
+	 * @param latex LaTeX source
+	 * @param size font size
+	 * @param path output PNG
+	 * @return status
+	 */
+	@JsMethod
+	public static String renderFormulaToFile(String latex, int size, String path) {
+		try {
+			com.himamis.retex.renderer.share.TeXFormula formula =
+					new com.himamis.retex.renderer.share.TeXFormula(latex);
+			com.himamis.retex.renderer.share.TeXIcon icon = formula.createTeXIcon(
+					com.himamis.retex.renderer.share.TeXConstants.STYLE_DISPLAY, size);
+			int width = Math.max(1, icon.getIconWidth()) + 40;
+			int height = Math.max(1, icon.getIconHeight()) + 40;
+			ImageGjs image = new ImageGjs(width, height,
+					com.himamis.retex.renderer.share.platform.graphics.Image.TYPE_INT_ARGB);
+			com.himamis.retex.renderer.share.platform.graphics.Graphics2DInterface g =
+					image.createGraphics2D();
+			g.setColor(GColor.WHITE);
+			g.fillRect(0, 0, width, height);
+			icon.paintIcon(
+					new com.himamis.retex.renderer.share.platform.graphics.HasForegroundColor() {
+						@Override
+						public GColor getForegroundColor() {
+							return GColor.BLACK;
+						}
+					}, g, 20, 20);
+			HostGraphics.writePng(
+					((GBufferedImageGjs) image.getBufferedImage()).getContext(), path);
+			return "ok " + width + "x" + height;
+		} catch (Throwable t) {
+			return "error: " + t;
+		}
+	}
+
+	/**
+	 * Renders a LaTeX formula into a host context (typeset with JLaTeXMath + Cairo).
+	 *
+	 * @param ctx host context
+	 * @param latex LaTeX source
+	 * @param size point size
+	 * @param x baseline origin x
+	 * @param y baseline origin y
+	 * @param r red
+	 * @param g green
+	 * @param b blue
+	 */
+	@JsMethod
+	public static void drawLatex(HostContext ctx, String latex, double size, double x, double y,
+			int r, int g, int b) {
+		GGraphics2DGjs graphics = new GGraphics2DGjs(ctx, 1000, 1000);
+		com.himamis.retex.renderer.share.platform.graphics.Graphics2DInterface gi =
+				new Graphics2DInterfaceGjs(graphics);
+		com.himamis.retex.renderer.share.TeXFormula formula =
+				new com.himamis.retex.renderer.share.TeXFormula(latex);
+		com.himamis.retex.renderer.share.TeXIcon icon = formula.createTeXIcon(
+				com.himamis.retex.renderer.share.TeXConstants.STYLE_DISPLAY, size);
+		icon.paintIcon(
+				new com.himamis.retex.renderer.share.platform.graphics.HasForegroundColor() {
+					@Override
+					public GColor getForegroundColor() {
+						return GColor.newColor(r, g, b);
+					}
+				}, gi, x, y);
+	}
+
+	/**
+	 * @param latex LaTeX source
+	 * @param size point size
+	 * @return {@code "width,height"} of the typeset formula
+	 */
+	@JsMethod
+	public static String measureLatex(String latex, double size) {
+		try {
+			com.himamis.retex.renderer.share.TeXFormula formula =
+					new com.himamis.retex.renderer.share.TeXFormula(latex);
+			com.himamis.retex.renderer.share.TeXIcon icon = formula.createTeXIcon(
+					com.himamis.retex.renderer.share.TeXConstants.STYLE_DISPLAY, size);
+			return icon.getIconWidth() + "," + icon.getIconHeight();
+		} catch (Throwable t) {
+			return "0,0";
+		}
+	}
+
+	/**
+	 * @param input user expression
+	 * @return LaTeX for the expression, or the input unchanged if it cannot be parsed
+	 */
+	@JsMethod
+	public static String toLatex(String input) {
+		try {
+			ValidExpression ve = app().getKernel().getParser().parseGeoGebraExpression(input);
+			return ve.toLaTeXString(true, StringTemplate.latexTemplate);
+		} catch (Throwable t) {
+			return input;
+		}
 	}
 
 	/**

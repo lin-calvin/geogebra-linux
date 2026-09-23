@@ -18,6 +18,8 @@ modules:
       - mkdir -p /app/share/gjsgebra
       - cp -a host/. /app/share/gjsgebra/
       - cp ggbcanvas.nocache.js /app/share/gjsgebra/
+      - mkdir -p /app/share/fonts
+      - cp -a fonts/. /app/share/fonts/
       - install -Dm644 io.github.lin_calvin.GJSGebra.desktop /app/share/applications/io.github.lin_calvin.GJSGebra.desktop
       - install -Dm644 io.github.lin_calvin.GJSGebra.svg /app/share/icons/hicolor/scalable/apps/io.github.lin_calvin.GJSGebra.svg
     sources:

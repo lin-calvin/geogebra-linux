@@ -28,4 +28,7 @@ public class HostGraphics {
 
 	/** Writes the surface behind {@code context} to a PNG file. */
 	public static native void writePng(HostContext context, String path);
+
+	/** Measures text via the host; returns {@code "width,ascent,descent"}. */
+	public static native String measureText(String name, int style, double size, String text);
 }

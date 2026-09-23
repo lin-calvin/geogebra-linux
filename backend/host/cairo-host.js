@@ -109,8 +109,11 @@ class CairoContext {
         const layout = PangoCairo.create_layout(this.cr);
         layout.set_font_description(desc);
         layout.set_text(String(text), -1);
+        // JLaTeXMath/Cairo callers expect the baseline at (x, y); show_layout places
+        // the layout's top-left there instead.
+        const baseline = layout.get_baseline() / ((Pango.SCALE !== undefined) ? Pango.SCALE : 1024);
         this.cr.save();
-        this.cr.moveTo(x, y);
+        this.cr.moveTo(x, y - baseline);
         PangoCairo.show_layout(this.cr, layout);
         this.cr.restore();
     }
@@ -168,8 +171,30 @@ export function installCairoHost() {
             ctx.surface.writeToPNG(path);
             log.push("writePng " + path);
         },
+        measureText: (name, style, size, text) => {
+            const weight = (style & 1) ? "Bold " : "";
+            const slant = (style & 2) ? "Italic " : "";
+            const desc = Pango.FontDescription.from_string(
+                weight + slant + Math.round(size) + " " + name);
+            const layout = PangoCairo.create_layout(scratchContext());
+            layout.set_font_description(desc);
+            layout.set_text(String(text), -1);
+            const [w, h] = layout.get_size();
+            const baseline = layout.get_baseline();
+            const scale = (Pango.SCALE !== undefined) ? Pango.SCALE : 1024;
+            return (w / scale) + "," + (baseline / scale) + "," + ((h - baseline) / scale);
+        },
     };
     return { log, CairoContext };
+}
+
+let scratchCr = null;
+
+function scratchContext() {
+    if (scratchCr === null) {
+        scratchCr = new cairo.Context(new cairo.ImageSurface(cairo.Format.ARGB32, 1, 1));
+    }
+    return scratchCr;
 }
 
 /** Wraps an existing cairo_t (e.g. a GtkDrawingArea draw callback). */

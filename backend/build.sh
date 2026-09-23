@@ -52,3 +52,14 @@ echo ">>> compiling org.geogebra.gjs.CanvasGjs"
 
 echo ">>> output: $GGB/source/web/web/war/ggbcanvas/"
 ls -la "$GGB/source/web/web/war/ggbcanvas/" 2>/dev/null || true
+
+echo ">>> copying JLaTeXMath fonts (for fontconfig)"
+FONTS_SRC="$GGB/source/desktop/renderer-desktop/src/main/resources/com/himamis/retex/renderer/desktop/fonts"
+FONTS_DEST="$ROOT/backend/host/fonts"
+mkdir -p "$FONTS_DEST"
+find "$FONTS_SRC" -name 'jlm_*.ttf' -exec cp -f {} "$FONTS_DEST/" \;
+echo "    $(find "$FONTS_DEST" -name '*.ttf' | wc -l) fonts in $FONTS_DEST"
+
+echo ">>> copying command.properties (function selector)"
+cp -f "$GGB/source/shared/common-jre/src/main/resources/org/geogebra/common/jre/properties/command.properties" \
+  "$ROOT/backend/host/command.properties"

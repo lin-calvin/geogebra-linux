@@ -3,6 +3,8 @@
 /src-tauri/gen
 /webapp
 /geogebra
+/backend/host/fonts
+/backend/host/command.properties
 /flatpak/staging
 /flatpak/build-dir
 /flatpak/.flatpak-builder
