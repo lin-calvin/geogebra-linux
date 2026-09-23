@@ -102,6 +102,40 @@ function dbg(...args) {
     }
 }
 
+// GJSGEBRA_FRAME_DEBUG=1 reports canvas frame times: how long the kernel paint
+// takes and how often the frame clock actually calls us.
+const FRAME_DEBUG = GLib.getenv('GJSGEBRA_FRAME_DEBUG') === '1';
+// GJSGEBRA_NO_COALESCE=1 applies every input event immediately instead of once
+// per frame; only useful for A/B profiling the view-change coalescing.
+const NO_COALESCE = GLib.getenv('GJSGEBRA_NO_COALESCE') === '1';
+const frame = { last: 0, count: 0, paint: 0, worst: 0, windowStart: 0, applied: 0 };
+
+function frameDone(paintMs) {
+    if (!FRAME_DEBUG) {
+        return;
+    }
+    const now = GLib.get_monotonic_time();
+    if (frame.windowStart === 0) {
+        frame.windowStart = now;
+        frame.last = now;
+    }
+    frame.count++;
+    frame.paint += paintMs;
+    frame.worst = Math.max(frame.worst, paintMs);
+    if (now - frame.windowStart >= 1000000) {
+        const seconds = (now - frame.windowStart) / 1e6;
+        print(`[frame] ${(frame.count / seconds).toFixed(1)} fps  ` +
+            `paint ${(frame.paint / frame.count).toFixed(2)} ms  ` +
+            `worst ${frame.worst.toFixed(1)} ms  ` +
+            `applied ${(frame.applied / seconds).toFixed(1)}/s  (${frame.count} frames / ${seconds.toFixed(1)} s)`);
+        frame.count = 0;
+        frame.paint = 0;
+        frame.worst = 0;
+        frame.applied = 0;
+        frame.windowStart = now;
+    }
+}
+
 function updateTitle() {
     if (win) {
         win.set_title(currentPath
@@ -530,8 +564,12 @@ function buildUI() {
     area.set_hexpand(true);
     area.set_vexpand(true);
     area.set_draw_func((widget, cr, width, height) => {
+        const started = FRAME_DEBUG ? GLib.get_monotonic_time() : 0;
         GgbApp.setSize(width, height);
         GgbApp.drawOn(contextForCr(cr, width, height), width, height);
+        if (FRAME_DEBUG) {
+            frameDone((GLib.get_monotonic_time() - started) / 1000);
+        }
     });
     // let the kernel ask for a redraw instead of every call site remembering to
     GgbApp.setRedrawRequest(() => redraw());
@@ -604,6 +642,66 @@ function buildUI() {
     let dragging = false;
     let pinching = false;
 
+    // --- coalescing --------------------------------------------------------
+    // Changing the coordinate system is a full update of every drawable, which
+    // costs milliseconds; a touchpad or a mouse delivers far more events per
+    // second than we have frames. Accumulate the deltas and apply at most one
+    // view change per frame, otherwise the event stream starves the frame clock.
+    let pendingPan = [0, 0];
+    let pendingZoom = 1;
+    let pendingZoomAt = null;
+    let pendingDrag = null;
+    let flushTick = 0;
+
+    const applyViewChanges = () => {
+        if (FRAME_DEBUG) {
+            frame.applied++;
+        }
+        if (pendingDrag) {
+            GgbApp.mouseDrag(pendingDrag[0], pendingDrag[1], false, false, false, false);
+            pendingDrag = null;
+        }
+        if (pendingPan[0] !== 0 || pendingPan[1] !== 0) {
+            GgbApp.panBy(pendingPan[0], pendingPan[1]);
+            pendingPan = [0, 0];
+        }
+        if (pendingZoom !== 1) {
+            const [zx, zy] = pendingZoomAt || anchor();
+            GgbApp.zoomAt(zx, zy, pendingZoom);
+            pendingZoom = 1;
+            pendingZoomAt = null;
+        }
+    };
+
+    const scheduleViewChange = () => {
+        if (NO_COALESCE) {
+            applyViewChanges();
+            redraw();
+            return;
+        }
+        if (flushTick) {
+            return;
+        }
+        flushTick = area.add_tick_callback(() => {
+            flushTick = 0;
+            applyViewChanges();
+            redraw();
+            return false; // one shot; the next event schedules again
+        });
+    };
+
+    const panBy = (dx, dy) => {
+        pendingPan[0] += dx;
+        pendingPan[1] += dy;
+        scheduleViewChange();
+    };
+
+    const zoomAt = (factor, x, y) => {
+        pendingZoom *= factor;
+        pendingZoomAt = [x, y];
+        scheduleViewChange();
+    };
+
     const endKernelDrag = (x, y) => {
         if (dragging) {
             dragging = false;
@@ -627,13 +725,18 @@ function buildUI() {
         if (pinching || !dragging) {
             return;
         }
-        GgbApp.mouseDrag(start[0] + ox, start[1] + oy, false, false, false, false);
-        redraw();
+        // keep only the latest position: the kernel derives its own delta from
+        // the previous one, so intermediate positions add nothing
+        pendingDrag = [start[0] + ox, start[1] + oy];
+        scheduleViewChange();
     });
     drag.connect('drag-end', (g, ox, oy) => {
         if (pinching) {
             return;
         }
+        // apply the last delta before releasing, otherwise it is dropped
+        pendingDrag = [start[0] + ox, start[1] + oy];
+        applyViewChanges();
         endKernelDrag(start[0] + ox, start[1] + oy);
     });
     area.add_controller(drag);
@@ -656,14 +759,6 @@ function buildUI() {
         return [w / 2, h / 2];
     };
 
-    const zoomBy = (factor, x, y) => {
-        if (!(factor > 0) || factor === 1) {
-            return;
-        }
-        GgbApp.zoomAt(x, y, factor);
-        redraw();
-    };
-
     // Scroll. A two-finger touchpad scroll pans the view (GNOME-style); every
     // other device - mouse wheel, smooth-scrolling mouse, trackpoint - keeps the
     // classic zoom, so a desktop without a touchpad behaves exactly as before.
@@ -683,11 +778,10 @@ function buildUI() {
             'dx=' + dx.toFixed(3), 'dy=' + dy.toFixed(3),
             'ctrl=' + zoomMod, 'shift=' + panMod);
         if (panMod || (touchpad && !zoomMod)) {
-            GgbApp.panBy(-dx, -dy);
-            redraw();
+            panBy(-dx, -dy);
         } else {
             const [ax, ay] = anchor();
-            zoomBy(Math.pow(1.1, -dy), ax, ay);
+            zoomAt(Math.pow(1.1, -dy), ax, ay);
         }
         return true;
     });
@@ -719,7 +813,7 @@ function buildUI() {
             const factor = pinchScale > 0 ? scale / pinchScale : 1;
             pinchScale = scale;
             const [ax, ay] = anchor();
-            zoomBy(factor, ax, ay);
+            zoomAt(factor, ax, ay);
         } else {
             pinchScale = 1;
         }
@@ -771,7 +865,7 @@ function buildUI() {
         pinchScale = scale;
         const [found, cx, cy] = g.get_bounding_box_center();
         const [ax, ay] = found ? [cx, cy] : anchor();
-        zoomBy(factor, ax, ay);
+        zoomAt(factor, ax, ay);
     });
 
     const split = new Adw.OverlaySplitView();
