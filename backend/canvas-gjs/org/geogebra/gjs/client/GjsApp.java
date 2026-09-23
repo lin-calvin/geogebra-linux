@@ -137,6 +137,24 @@ public class GjsApp {
 		view().setBackground(GColor.newColor(r, g, b, a));
 	}
 
+	/** Makes the canvas transparent so the GTK theme background shows through. */
+	@JsMethod
+	public static void setTransparent(boolean transparent) {
+		view().setTransparent(transparent);
+	}
+
+	/** Sets the axes colour. */
+	@JsMethod
+	public static void setAxesColor(int r, int g, int b, int a) {
+		view().setAxesColor(GColor.newColor(r, g, b, a));
+	}
+
+	/** Sets the grid colour. */
+	@JsMethod
+	public static void setGridColor(int r, int g, int b, int a) {
+		view().setGridColor(GColor.newColor(r, g, b, a));
+	}
+
 	/** Sets the active tool by mode number. */
 	@JsMethod
 	public static void setMode(int mode) {

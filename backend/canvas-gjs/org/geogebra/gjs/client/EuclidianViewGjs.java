@@ -28,6 +28,7 @@ import org.geogebra.common.main.settings.EuclidianSettings;
 public class EuclidianViewGjs extends EuclidianView {
 
 	private GColor backgroundColor = GColor.WHITE;
+	private boolean transparent = true;
 	private GDimension dim = AwtFactory.getPrototype().newDimension(800, 600);
 	private final GFont font;
 	private final GGraphics2D tempGraphics;
@@ -82,6 +83,20 @@ public class EuclidianViewGjs extends EuclidianView {
 	@Override
 	public final GColor getBackgroundCommon() {
 		return backgroundColor;
+	}
+
+	/**
+	 * When transparent, the canvas is cleared instead of filled, so the GTK /
+	 * libadwaita theme background shows through.
+	 */
+	@Override
+	protected boolean isTransparent() {
+		return transparent;
+	}
+
+	/** @param transparent whether the view background should be transparent */
+	public void setTransparent(boolean transparent) {
+		this.transparent = transparent;
 	}
 
 	@Override

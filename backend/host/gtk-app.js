@@ -228,8 +228,23 @@ function buildUI() {
     win.set_content(toastOverlay);
     win.present();
 
-    // GeoGebra has no official dark mode, so the canvas keeps its light background.
-    // The native chrome still follows the system theme via libadwaita.
+    // GeoGebra has no dark "theme", but the canvas can be transparent so the
+    // libadwaita window background shows through; only axes/grid colours need to
+    // follow the theme for contrast.
+    const styleManager = Adw.StyleManager.get_default();
+    const applyTheme = () => {
+        GgbApp.setTransparent(true);
+        if (styleManager.get_dark()) {
+            GgbApp.setAxesColor(208, 208, 208, 255);
+            GgbApp.setGridColor(58, 58, 58, 255);
+        } else {
+            GgbApp.setAxesColor(0, 0, 0, 255);
+            GgbApp.setGridColor(192, 192, 192, 255);
+        }
+        redraw();
+    };
+    styleManager.connect('notify::dark', applyTheme);
+    applyTheme();
 
     refreshAlgebra();
 }
