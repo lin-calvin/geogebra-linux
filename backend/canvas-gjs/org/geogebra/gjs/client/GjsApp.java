@@ -9,6 +9,7 @@ import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.StringTemplate;
 import org.geogebra.common.kernel.geos.GeoElement;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
+import org.geogebra.common.main.App;
 
 import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
@@ -175,6 +176,35 @@ public class GjsApp {
 	@JsMethod
 	public static void resetView() {
 		view().setStandardView(true);
+	}
+
+	/** @return the construction as {@code geogebra.xml} */
+	@JsMethod
+	public static String getXML() {
+		return app().getXML();
+	}
+
+	/**
+	 * Loads a construction from {@code geogebra.xml}.
+	 *
+	 * @param xml XML content
+	 * @return status
+	 */
+	@JsMethod
+	public static String setXML(String xml) {
+		try {
+			app().setActiveView(App.VIEW_EUCLIDIAN);
+			app().getXMLio().processXMLString(xml, true, false);
+			return "ok (" + objectCount() + ")";
+		} catch (Throwable t) {
+			return "error: " + t;
+		}
+	}
+
+	/** Clears the construction (File > New). */
+	@JsMethod
+	public static void newConstruction() {
+		app().getKernel().getConstruction().clearConstruction();
 	}
 
 	@JsMethod

@@ -172,7 +172,7 @@ public class AppGjs extends App {
 
 	@Override
 	public MyXMLio createXMLio(Construction cons) {
-		return null;
+		return new MyXMLioGjs(getKernel(), cons);
 	}
 
 	@Override

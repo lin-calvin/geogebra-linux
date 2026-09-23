@@ -6,6 +6,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { installBrowserShim } from './shim.js';
 import { installCairoHost, contextForCr } from './cairo-host.js';
+import { readGgb, writeGgb } from './ggbfile.js';
 
 const modulePath = ARGV[0];
 if (!modulePath) {
@@ -37,6 +38,8 @@ let area = null;
 let listBox = null;
 let toastOverlay = null;
 let entry = null;
+let win = null;
+let currentPath = null;
 
 function redraw() {
     if (area) {
@@ -91,6 +94,98 @@ function addAction(name, callback) {
     app.add_action(action);
 }
 
+function toast(message) {
+    if (toastOverlay) {
+        toastOverlay.add_toast(new Adw.Toast({ title: message }));
+    }
+}
+
+function updateTitle() {
+    if (win) {
+        win.set_title(currentPath
+            ? GLib.path_get_basename(currentPath) + ' — GeoGebra'
+            : 'GeoGebra');
+    }
+}
+
+function doNew() {
+    GgbApp.newConstruction();
+    currentPath = null;
+    updateTitle();
+    refreshAlgebra();
+    redraw();
+}
+
+function ggbFileFilter() {
+    const filter = new Gtk.FileFilter({ name: 'GeoGebra files' });
+    filter.add_pattern('*.ggb');
+    filter.add_pattern('*.xml');
+    return filter;
+}
+
+function doOpen() {
+    const dialog = new Gtk.FileDialog({ title: 'Open GeoGebra File' });
+    const filter = ggbFileFilter();
+    const filters = new Gio.ListStore({ item_type: Gtk.FileFilter.$gtype });
+    filters.append(filter);
+    dialog.set_filters(filters);
+    dialog.set_default_filter(filter);
+    dialog.open(win, null, (source, result) => {
+        try {
+            const path = source.open_finish(result).get_path();
+            const status = GgbApp.setXML(readGgb(path));
+            if (status.startsWith('error')) {
+                toast(status);
+                return;
+            }
+            currentPath = path;
+            updateTitle();
+            refreshAlgebra();
+            redraw();
+        } catch (e) {
+            if (!/dismiss|cancel/i.test(String(e))) {
+                toast('Open failed: ' + e.message);
+            }
+        }
+    });
+}
+
+function doSaveAs() {
+    const dialog = new Gtk.FileDialog({
+        title: 'Save GeoGebra File',
+        initial_name: 'construction.ggb',
+    });
+    dialog.save(win, null, (source, result) => {
+        try {
+            let path = source.save_finish(result).get_path();
+            if (!/\.(ggb|xml)$/i.test(path)) {
+                path += '.ggb';
+            }
+            writeGgb(path, GgbApp.getXML());
+            currentPath = path;
+            updateTitle();
+            toast('Saved ' + GLib.path_get_basename(path));
+        } catch (e) {
+            if (!/dismiss|cancel/i.test(String(e))) {
+                toast('Save failed: ' + e.message);
+            }
+        }
+    });
+}
+
+function doSave() {
+    if (!currentPath) {
+        doSaveAs();
+        return;
+    }
+    try {
+        writeGgb(currentPath, GgbApp.getXML());
+        toast('Saved ' + GLib.path_get_basename(currentPath));
+    } catch (e) {
+        toast('Save failed: ' + e.message);
+    }
+}
+
 function toolButton(header, iconName, tooltip, mode) {
     const button = new Gtk.Button({ icon_name: iconName, tooltip_text: tooltip });
     button.connect('clicked', () => GgbApp.setMode(mode));
@@ -114,6 +209,10 @@ function buildUI() {
 
     // menu
     const menu = new Gio.Menu();
+    menu.append('New', 'app.new');
+    menu.append('Open…', 'app.open');
+    menu.append('Save', 'app.save');
+    menu.append('Save As…', 'app.save-as');
     menu.append('Zoom In', 'app.zoom-in');
     menu.append('Zoom Out', 'app.zoom-out');
     menu.append('Reset View', 'app.reset');
@@ -219,7 +318,7 @@ function buildUI() {
     toastOverlay = new Adw.ToastOverlay();
     toastOverlay.set_child(toolbarView);
 
-    const win = new Adw.ApplicationWindow({
+    win = new Adw.ApplicationWindow({
         application: app,
         title: 'GeoGebra',
         default_width: 1000,
@@ -251,6 +350,10 @@ function buildUI() {
 
 app.connect('activate', buildUI);
 
+addAction('new', doNew);
+addAction('open', doOpen);
+addAction('save', doSave);
+addAction('save-as', doSaveAs);
 addAction('zoom-in', () => { GgbApp.zoomIn(); redraw(); });
 addAction('zoom-out', () => { GgbApp.zoomOut(); redraw(); });
 addAction('reset', () => { GgbApp.resetView(); redraw(); });
@@ -265,5 +368,10 @@ addAction('about', () => {
     });
     about.present();
 });
+
+app.set_accels_for_action('app.new', ['<Control>n']);
+app.set_accels_for_action('app.open', ['<Control>o']);
+app.set_accels_for_action('app.save', ['<Control>s']);
+app.set_accels_for_action('app.save-as', ['<Control><Shift>s']);
 
 app.run(ARGV);
