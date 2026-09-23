@@ -1,10 +1,15 @@
 package org.geogebra.gjs.client;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
+
 import org.geogebra.common.awt.AwtFactory;
 import org.geogebra.common.awt.GColor;
 import org.geogebra.common.awt.GGraphics2D;
 import org.geogebra.common.euclidian.EuclidianController;
 import org.geogebra.common.euclidian.event.PointerEventType;
+import org.geogebra.common.kernel.Construction;
 import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.StringTemplate;
 import org.geogebra.common.kernel.arithmetic.ValidExpression;
@@ -142,6 +147,11 @@ public class GjsApp {
 	@JsMethod
 	public static String evaluate(String expression) {
 		Kernel kernel = app().getKernel();
+		Construction cons = kernel.getConstruction();
+		// snapshot so we only delete objects created by *this* evaluation
+		Set<GeoElement> before =
+				Collections.newSetFromMap(new IdentityHashMap<>());
+		before.addAll(cons.getGeoSetConstructionOrder());
 		try {
 			ValidExpression ve = kernel.getParser().parseGeoGebraExpression(expression);
 			EvalInfo info = kernel.getAlgebraProcessor().getEvalInfo(false, true);
@@ -156,11 +166,47 @@ public class GjsApp {
 					? formatNumber(((GeoNumeric) last).getDouble())
 					: last.toValueString(StringTemplate.editorTemplate);
 			for (GeoElementND geo : result) {
-				if (geo != null) {
+				if (geo != null && !before.contains(geo.toGeoElement())) {
 					geo.toGeoElement().remove();
 				}
 			}
 			return value;
+		} catch (Throwable t) {
+			return "error";
+		}
+	}
+
+	/**
+	 * REPL evaluation: assignments ({@code a=1}, {@code f(x)=x^2}) are kept in the
+	 * construction so later inputs can use them; plain expressions are evaluated
+	 * transiently (nothing added).
+	 *
+	 * @param input user input
+	 * @return value string, or {@code "error"}
+	 */
+	@JsMethod
+	public static String evaluateRepl(String input) {
+		String trimmed = input == null ? "" : input.trim();
+		boolean assignment =
+				trimmed.matches("[a-zA-Z][a-zA-Z0-9_]*\\s*=\\s*[^=].*")
+						|| trimmed.matches("[a-zA-Z][a-zA-Z0-9_]*\\([^)]*\\)\\s*=\\s*[^=].*");
+		if (!assignment) {
+			return evaluate(trimmed);
+		}
+		Kernel kernel = app().getKernel();
+		try {
+			ValidExpression ve = kernel.getParser().parseGeoGebraExpression(trimmed);
+			EvalInfo info = kernel.getAlgebraProcessor().getEvalInfo(false, true);
+			GeoElementND[] result = kernel.getAlgebraProcessor()
+					.processAlgebraCommandNoExceptionHandling(ve, true,
+							errorHandler(new StringBuilder()), null, info);
+			if (result == null || result.length == 0) {
+				return "error";
+			}
+			GeoElementND last = result[result.length - 1];
+			return last instanceof GeoNumeric
+					? formatNumber(((GeoNumeric) last).getDouble())
+					: last.toValueString(StringTemplate.editorTemplate);
 		} catch (Throwable t) {
 			return "error";
 		}

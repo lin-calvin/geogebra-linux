@@ -277,7 +277,7 @@ function submitRepl() {
         return;
     }
     const expression = text.replace(/\bans\b/g, lastResult || '0');
-    const result = GgbApp.evaluate(expression);
+    const result = GgbApp.evaluateRepl(expression);
     if (result !== 'error') {
         lastResult = result;
     }
