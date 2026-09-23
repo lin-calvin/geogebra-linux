@@ -47,7 +47,10 @@ jobs:
       - name: Install flatpak-builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          # appstream: flatpak-builder composes the AppStream catalog after the
+          # build and needs appstreamcli (or the appstream-compose helper) for it
+          sudo apt-get install -y flatpak flatpak-builder appstream
+          sudo apt-get install -y appstream-compose || true
           flatpak remote-add --if-not-exists --user flathub \
             https://flathub.org/repo/flathub.flatpakrepo
 
