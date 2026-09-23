@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=GeoGebra
+GenericName=Dynamic Mathematics
+Comment=Graphing, geometry and algebra (native GJS + GTK4)
+Exec=ggb-gjs
+Icon=org.geogebra.Gjs
+Terminal=false
+Type=Application
+Categories=Education;Science;Math;
+Keywords=math;geometry;algebra;graph;function;
+StartupNotify=true

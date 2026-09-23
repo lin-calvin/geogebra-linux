@@ -1,0 +1,59 @@
+name: native
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "flatpak/**"
+      - ".github/workflows/native.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "flatpak/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+env:
+  GGB_REF: main
+
+jobs:
+  flatpak:
+    name: Flatpak (native GJS + GTK4)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-gjs-${{ runner.os }}-${{ hashFiles('backend/build.sh') }}
+          restore-keys: gradle-gjs-${{ runner.os }}-
+
+      - name: Build GeoGebra GJS module
+        run: bash backend/build.sh
+
+      - name: Assemble Flatpak staging
+        run: bash flatpak/assemble.sh
+
+      - name: Build Flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: geogebra-gjs.flatpak
+          manifest-path: flatpak/org.geogebra.Gjs.yml
+          cache-key: flatpak-gjs-${{ github.sha }}
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: geogebra-gjs-flatpak
+          path: geogebra-gjs.flatpak
+          if-no-files-found: error

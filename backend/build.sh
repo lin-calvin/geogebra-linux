@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build our GTK/Cairo backend module together with the upstream GeoGebra kernel.
 #
+# Self-contained: clones upstream if needed, applies low-memory/headless build
+# settings, then compiles the org.geogebra.gjs.CanvasGjs GWT module.
+#
 # Decoupling rules enforced here:
 #   * our sources live in backend/canvas-gjs (this repo)
 #   * they are only *copied into* the upstream clone, never merged/edited
@@ -12,11 +15,23 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND="$ROOT/backend/canvas-gjs"
 GGB="$ROOT/geogebra"
 DEST="$GGB/source/web/web/src/main/java"
+GGB_REPO="${GGB_REPO:-https://github.com/geogebra/geogebra.git}"
+GGB_REF="${GGB_REF:-main}"
 
 if [ ! -d "$GGB/.git" ]; then
-  echo "error: $GGB not found; run scripts/build-geogebra-web.sh first" >&2
-  exit 1
+  echo ">>> cloning $GGB_REPO ($GGB_REF)"
+  git clone --depth 1 --single-branch --branch "$GGB_REF" "$GGB_REPO" "$GGB"
 fi
+
+echo ">>> applying low-memory / headless build settings"
+sed -i 's/^org.gradle.parallel=.*/org.gradle.parallel=false/' \
+  "$GGB/gradle.properties" "$GGB/source/web/gradle.properties"
+sed -i 's#^org.gradle.jvmargs=.*#org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Djava.awt.headless=true#' \
+  "$GGB/gradle.properties" "$GGB/source/web/gradle.properties"
+sed -i 's/maxHeapSize = "4096m"/maxHeapSize = "3072m"/' \
+  "$GGB/source/build-logic/convention/src/main/kotlin/gwt-conventions.gradle.kts"
+sed -i 's/options.forkOptions.jvmArgs = listOf("-Xmx4g")/options.forkOptions.jvmArgs = listOf("-Xmx2g")/' \
+  "$GGB/source/web/web/build.gradle.kts"
 
 echo ">>> decoupling check (forbidden imports in our backend)"
 if grep -rnE '^\s*import\s+(static\s+)?(org\.geogebra\.web|elemental2|com\.google\.gwt\.dom|com\.google\.gwt\.user\.client\.ui)' \

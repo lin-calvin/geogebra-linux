@@ -1,0 +1,4 @@
+#!/bin/sh
+# GeoGebra on GTK4 + libadwaita, running the kernel natively in GJS.
+exec gjs -m /app/share/geogebra-gjs/gtk-app.js \
+  /app/share/geogebra-gjs/ggbcanvas.nocache.js "$@"

@@ -3,3 +3,8 @@
 /src-tauri/gen
 /webapp
 /geogebra
+/flatpak/staging
+/flatpak/build-dir
+/flatpak/.flatpak-builder
+/flatpak/repo
+/*.flatpak

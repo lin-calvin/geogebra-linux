@@ -32,7 +32,12 @@ GgbApp.evalCommand('s=Line(A,(3,1))');
 const MODE = { MOVE: 0, POINT: 1, LINE: 2, PARALLEL: 3, ORTHOGONAL: 4,
     INTERSECT: 5, DELETE: 6, SEGMENT: 15, POLYGON: 16, MIDPOINT: 19, ANGLE: 36 };
 
-const app = new Adw.Application({ application_id: 'org.geogebra.gjs' });
+const app = new Adw.Application({
+    application_id: 'org.geogebra.gjs',
+    // The Flatpak session-bus proxy may deny owning a name; we don't need
+    // single-instance behaviour, so don't register one.
+    flags: Gio.ApplicationFlags.NON_UNIQUE,
+});
 
 let area = null;
 let listBox = null;
