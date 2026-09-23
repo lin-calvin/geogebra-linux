@@ -41,11 +41,8 @@ const TOOLS = [
     ['user-trash-symbolic', 'Delete', 6],
 ];
 
-const PERSPECTIVES = ['Graphing', 'Geometry', '3D Graphics', 'CAS', 'Spreadsheet',
-    'Probability', 'Exam Mode'];
-
 const app = new Adw.Application({
-    application_id: 'org.geogebra.gjs',
+    application_id: 'io.github.lin_calvin.GJSGebra',
     flags: Gio.ApplicationFlags.NON_UNIQUE,
 });
 
@@ -72,8 +69,8 @@ function toast(message) {
 function updateTitle() {
     if (win) {
         win.set_title(currentPath
-            ? GLib.path_get_basename(currentPath) + ' — GeoGebra'
-            : 'GeoGebra');
+            ? GLib.path_get_basename(currentPath) + ' — GJSGebra'
+            : 'GJSGebra');
     }
 }
 
@@ -212,23 +209,6 @@ function buildToolsPanel() {
     return scrolled;
 }
 
-function buildPlaceholder(text) {
-    const box = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        valign: Gtk.Align.CENTER,
-        halign: Gtk.Align.CENTER,
-        spacing: 6,
-    });
-    box.append(new Gtk.Image({ icon_name: 'emblem-documents-symbolic', pixel_size: 48 }));
-    box.append(new Gtk.Label({ label: text }));
-    const hint = new Gtk.Label({ label: 'Coming soon' });
-    hint.add_css_class('dim-label');
-    box.append(hint);
-    return box;
-}
-
-// ------------------------------------------------------------------- rail
-
 function railButton(iconName, label) {
     const button = new Gtk.ToggleButton();
     button.add_css_class('flat');
@@ -266,7 +246,7 @@ function buildUI() {
     menu.append('Reset View', 'app.reset');
     menu.append('Undo', 'app.undo');
     menu.append('Redo', 'app.redo');
-    menu.append('About GeoGebra', 'app.about');
+    menu.append('About GJSGebra', 'app.about');
     const menuButton = new Gtk.MenuButton({
         icon_name: 'open-menu-symbolic',
         menu_model: menu,
@@ -275,20 +255,13 @@ function buildUI() {
     menuButton.add_css_class('flat');
     header.pack_start(menuButton);
 
-    // title + perspective dropdown
-    const title = new Gtk.Label({ label: 'GeoGebra' });
+    // title + perspective
+    const title = new Gtk.Label({ label: 'GJSGebra' });
     title.add_css_class('title-4');
-    const subtitle = new Gtk.Label({ label: 'Calculator Suite' });
-    subtitle.add_css_class('dim-label');
-    subtitle.add_css_class('title-4');
     header.pack_start(title);
-    header.pack_start(subtitle);
 
     const perspectiveMenu = new Gio.Menu();
     perspectiveMenu.append('Graphing', 'app.perspective-graphing');
-    for (const name of PERSPECTIVES.slice(1)) {
-        perspectiveMenu.append(name, 'app.perspective-soon');
-    }
     const perspectiveChild = new Gtk.Box({ spacing: 6 });
     perspectiveChild.append(new Gtk.Image({ icon_name: 'view-grid-symbolic', pixel_size: 16 }));
     perspectiveChild.append(new Gtk.Label({ label: 'Graphing' }));
@@ -307,8 +280,6 @@ function buildUI() {
     });
     stack.add_named(buildAlgebraPanel(), 'algebra');
     stack.add_named(buildToolsPanel(), 'tools');
-    stack.add_named(buildPlaceholder('Table of values'), 'table');
-    stack.add_named(buildPlaceholder('Spreadsheet'), 'spreadsheet');
 
     const rail = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 2 });
     rail.add_css_class('toolbar');
@@ -316,8 +287,6 @@ function buildUI() {
     const railItems = [
         ['view-grid-symbolic', 'Algebra', 'algebra'],
         ['applications-science-symbolic', 'Tools', 'tools'],
-        ['view-list-symbolic', 'Table', 'table'],
-        ['x-office-spreadsheet-symbolic', 'Spreadsheet', 'spreadsheet'],
     ];
     let firstRailButton = null;
     for (const [icon, label, name] of railItems) {
@@ -464,7 +433,7 @@ function buildUI() {
 
     win = new Adw.ApplicationWindow({
         application: app,
-        title: 'GeoGebra',
+        title: 'GJSGebra',
         default_width: 1180,
         default_height: 760,
     });
@@ -593,10 +562,9 @@ addAction('perspective-graphing', () => {
         stack.set_visible_child_name('algebra');
     }
 });
-addAction('perspective-soon', () => toast('This perspective is coming soon'));
 addAction('about', () => {
     const about = new Adw.AboutWindow({
-        application_name: 'GeoGebra (GJS)',
+        application_name: 'GJSGebra',
         application_icon: 'accessories-calculator-symbolic',
         version: '0.1',
         comments: 'GeoGebra kernel running natively in GJS, rendered with Cairo.',

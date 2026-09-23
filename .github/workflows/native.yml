@@ -54,12 +54,12 @@ jobs:
       - name: Build Flatpak bundle
         run: |
           flatpak-builder --user --install-deps-from=flathub --force-clean \
-            --repo=flatpak/repo flatpak/build-dir flatpak/org.geogebra.Gjs.yml
-          flatpak build-bundle flatpak/repo geogebra.flatpak org.geogebra.Gjs
+            --repo=flatpak/repo flatpak/build-dir flatpak/io.github.lin_calvin.GJSGebra.yml
+          flatpak build-bundle flatpak/repo GJSGebra.flatpak io.github.lin_calvin.GJSGebra
 
       - name: Upload Flatpak bundle
         uses: actions/upload-artifact@v4
         with:
-          name: geogebra-flatpak
-          path: geogebra.flatpak
+          name: gjsgebra-flatpak
+          path: GJSGebra.flatpak
           if-no-files-found: error

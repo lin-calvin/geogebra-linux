@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=GeoGebra
+Name=GJSGebra
 GenericName=Dynamic Mathematics
 Comment=Graphing, geometry and algebra (native GJS + GTK4)
-Exec=ggb-gjs
-Icon=org.geogebra.Gjs
+Exec=gjsgebra
+Icon=io.github.lin_calvin.GJSGebra
 Terminal=false
 Type=Application
 Categories=Education;Science;Math;

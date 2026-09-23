@@ -1,0 +1,4 @@
+#!/bin/sh
+# GJSGebra: the GeoGebra kernel running natively in GJS, rendered with Cairo.
+exec gjs -m /app/share/gjsgebra/gtk-app.js \
+  /app/share/gjsgebra/ggbcanvas.nocache.js "$@"
