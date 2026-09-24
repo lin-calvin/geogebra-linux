@@ -102,6 +102,24 @@ function dbg(...args) {
     }
 }
 
+/** Short name of a GdkEvent type, for the gesture trace. */
+function evName(event) {
+    if (!event) {
+        return 'no-event';
+    }
+    const type = event.get_event_type();
+    if (type === Gdk.EventType.TOUCHPAD_PINCH) {
+        return 'touchpad-pinch';
+    }
+    if (type === Gdk.EventType.TOUCH_UPDATE) {
+        return 'touch-update';
+    }
+    if (type === Gdk.EventType.TOUCH_BEGIN) {
+        return 'touch-begin';
+    }
+    return 'event-' + type;
+}
+
 // GJSGEBRA_FRAME_DEBUG=1 reports canvas frame times: how long the kernel paint
 // takes and how often the frame clock actually calls us.
 const FRAME_DEBUG = GLib.getenv('GJSGEBRA_FRAME_DEBUG') === '1';
@@ -787,58 +805,23 @@ function buildUI() {
     });
     area.add_controller(scroll);
 
-    // Pinch-to-zoom. Two sources, one accumulator: the scale reported by both is
+    // Pinch-to-zoom. One gesture covers both sources: GtkGestureZoom tracks two
+    // touch sequences on a touchscreen, and GTK feeds it GDK_TOUCHPAD_PINCH for a
+    // touchpad (gtk_gesture_zoom_filter_event lets those through). Its scale is
     // cumulative from the start of the gesture, so only the ratio between two
     // consecutive reports may be applied.
     let pinchScale = 1;
-
-    // Touchpad half: GTK delivers GDK_TOUCHPAD_PINCH as a raw event with no
-    // touch sequences, so handle it directly.
-    const legacy = new Gtk.EventControllerLegacy();
-    legacy.connect('event', (c, event) => {
-        if (event.get_event_type() !== Gdk.EventType.TOUCHPAD_PINCH) {
-            return false;
-        }
-        const phase = event.get_gesture_phase();
-        const fingers = event.get_n_fingers();
-        const scale = event.get_pinch_scale();
-        dbg('touchpad-pinch', 'phase=' + phase, 'fingers=' + fingers,
-            'scale=' + scale.toFixed(4));
-        if (fingers !== 2) {
-            return true;
-        }
-        if (phase === Gdk.TouchpadGesturePhase.BEGIN) {
-            pinchScale = scale;
-        } else if (phase === Gdk.TouchpadGesturePhase.UPDATE) {
-            const factor = pinchScale > 0 ? scale / pinchScale : 1;
-            pinchScale = scale;
-            const [ax, ay] = anchor();
-            zoomAt(factor, ax, ay);
-        } else {
-            pinchScale = 1;
-        }
-        return true;
-    });
-    area.add_controller(legacy);
-
-    // Touchscreen half: two touch sequences. Grouped with the drag so the drag
-    // does not claim the first finger before the pinch has formed.
     const pinch = new Gtk.GestureZoom();
     area.add_controller(pinch);
-    // both are attached now, so they may be grouped; grouping lets the drag and
-    // the pinch recognize the same sequence, so the drag cannot claim the first
-    // finger before the pinch has formed
+    // grouped with the drag, otherwise the drag claims the first finger and the
+    // pinch never sees both sequences
     pinch.group(drag);
     pinch.connect('begin', () => {
-        const event = pinch.get_current_event();
-        if (event && event.get_event_type() === Gdk.EventType.TOUCHPAD_PINCH) {
-            return; // the legacy handler owns touchpad pinch
-        }
         pinching = true;
         pinchScale = 1;
         const [x, y] = anchor();
         endKernelDrag(x, y);
-        dbg('pinch-begin');
+        dbg('pinch-begin', evName(pinch.get_current_event()));
     });
     pinch.connect('end', () => {
         if (pinching) {
@@ -855,16 +838,12 @@ function buildUI() {
         }
     });
     pinch.connect('scale-changed', (g, scale) => {
-        const event = g.get_current_event();
-        const touchpad = event && event.get_event_type() === Gdk.EventType.TOUCHPAD_PINCH;
-        dbg('pinch-scale', scale.toFixed(4), 'touchpad=' + touchpad);
-        if (touchpad) {
-            return;
-        }
         const factor = scale / pinchScale;
         pinchScale = scale;
         const [found, cx, cy] = g.get_bounding_box_center();
         const [ax, ay] = found ? [cx, cy] : anchor();
+        dbg('pinch-scale', 'scale=' + scale.toFixed(4), 'factor=' + factor.toFixed(4),
+            evName(g.get_current_event()), found ? 'anchor=gesture' : 'anchor=pointer');
         zoomAt(factor, ax, ay);
     });
 
