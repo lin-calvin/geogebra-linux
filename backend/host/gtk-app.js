@@ -757,6 +757,10 @@ function buildUI() {
         applyViewChanges();
         endKernelDrag(start[0] + ox, start[1] + oy);
     });
+    // a competing gesture (the pinch) can cancel the drag instead of ending it
+    drag.connect('cancel', () => {
+        endKernelDrag(last[0], last[1]);
+    });
     area.add_controller(drag);
 
     let last = [0, 0];
@@ -812,22 +816,25 @@ function buildUI() {
     // consecutive reports may be applied.
     let pinchScale = 1;
     const pinch = new Gtk.GestureZoom();
+    // CAPTURE, so the pinch sees the touches before the drag and can claim them.
+    // Deliberately NOT grouped with the drag: a group is denied together, and a
+    // drag (n-points 1) denies the second touch it sees, which would deny the
+    // pinch's second point too and end the pinch on the spot.
+    pinch.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
     area.add_controller(pinch);
-    // grouped with the drag, otherwise the drag claims the first finger and the
-    // pinch never sees both sequences
-    pinch.group(drag);
     pinch.connect('begin', () => {
         pinching = true;
         pinchScale = 1;
         const [x, y] = anchor();
         endKernelDrag(x, y);
-        dbg('pinch-begin', evName(pinch.get_current_event()));
+        dbg('pinch-begin', evName(pinch.get_current_event()),
+            'sequences=' + (pinch.get_sequences() || []).length);
     });
     pinch.connect('end', () => {
         if (pinching) {
             pinching = false;
             pinchScale = 1;
-            dbg('pinch-end');
+            dbg('pinch-end', 'sequences=' + (pinch.get_sequences() || []).length);
         }
     });
     pinch.connect('cancel', () => {
