@@ -5,6 +5,11 @@ export function installBrowserShim(href) {
         globalThis.window = globalThis;
     }
     globalThis.self = globalThis;
+    // the backend's localization looks up strings here; the app replaces this with
+    // the real bundle via strings.js, headless scripts can leave it empty
+    if (typeof globalThis.ggbStrings === 'undefined') {
+        globalThis.ggbStrings = { available: () => false, get: () => '' };
+    }
     globalThis.$wnd = globalThis;
     globalThis.navigator = { userAgent: "safari" };
     globalThis.location = { href, search: "", hash: "", protocol: "file:" };

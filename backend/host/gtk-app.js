@@ -11,6 +11,7 @@ import { installCairoHost, contextForCr } from './cairo-host.js';
 import { readGgb, writeGgb } from './ggbfile.js';
 import { loadFunctions } from './functions.js';
 import { loadCas } from './cas.js';
+import { loadStrings } from './strings.js';
 
 const modulePath = ARGV[0];
 if (!modulePath) {
@@ -33,6 +34,8 @@ try {
 
 // --- load the GWT-compiled kernel + app ------------------------------------
 installBrowserShim('file://' + modulePath);
+// English UI strings for the kernel's Localization
+loadStrings(hostDir + '/menu.properties');
 installCairoHost();
 const [ok, bytes] = GLib.file_get_contents(modulePath);
 if (!ok) {
@@ -50,17 +53,6 @@ GgbApp.evalCommand('s=Line(A,(3,1))');
 
 const FUNCTIONS = loadFunctions(import.meta.url);
 
-// GeoGebra tool modes (EuclidianConstants)
-const TOOLS = [
-    ['object-select-symbolic', 'Move', 0],
-    ['mark-location-symbolic', 'Point', 1],
-    ['insert-object-symbolic', 'Line', 2],
-    ['go-bottom-symbolic', 'Segment', 15],
-    ['view-grid-symbolic', 'Polygon', 16],
-    ['edit-cut-symbolic', 'Intersect', 5],
-    ['go-top-symbolic', 'Angle', 36],
-    ['user-trash-symbolic', 'Delete', 6],
-];
 
 const app = new Adw.Application({
     application_id: 'io.github.lin_calvin.gjsgebra',
@@ -76,6 +68,8 @@ let mainStack = null;
 let toastOverlay = null;
 let currentPath = null;
 let calcEntry = null;
+let toolButtons = new Map();
+let activeToolButton = null;
 let historyBox = null;
 let historyScroll = null;
 let lastResult = '';
@@ -289,30 +283,148 @@ function buildAlgebraPanel() {
     return box;
 }
 
-function buildToolsPanel() {
-    const flow = new Gtk.FlowBox({
-        margin_top: 8,
-        margin_bottom: 8,
-        margin_start: 8,
-        margin_end: 8,
-        row_spacing: 6,
-        column_spacing: 6,
-        selection_mode: Gtk.SelectionMode.NONE,
-        max_children_per_line: 3,
-    });
-    for (const [icon, label, mode] of TOOLS) {
-        const button = new Gtk.Button();
-        const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
-        box.append(new Gtk.Image({ icon_name: icon, pixel_size: 24 }));
-        box.append(new Gtk.Label({ label, wrap: true, justify: Gtk.Justification.CENTER }));
-        button.set_child(box);
-        button.set_size_request(84, 72);
-        button.connect('clicked', () => GgbApp.setMode(mode));
-        flow.append(button);
+// The official GeoGebra tool icons are multicoloured and drawn for a light
+// surface (GeoGebra has no dark mode), so the palette sits on a light card.
+const PALETTE_CSS = `
+.tool-palette {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 10px;
+}
+.tool-palette label { color: #1a171b; }
+.tool-palette button {
+    background: none;
+    box-shadow: none;
+    color: #1a171b;
+    padding: 4px;
+}
+.tool-palette button:hover { background: rgba(0, 0, 0, 0.06); }
+.tool-palette button.tool-active { background: rgba(0, 0, 0, 0.12); }
+`;
+
+const TOOL_ICON_DIR = 'toolicons';
+
+function installToolIcons() {
+    const display = Gdk.Display.get_default();
+    if (!display) {
+        return;
     }
+    const theme = Gtk.IconTheme.get_for_display(display);
+    theme.add_search_path(GLib.build_filenamev([hostDir, TOOL_ICON_DIR]));
+}
+
+/** @return the icon theme name for a mode's icon, falling back to the generic one */
+function toolIconName(icon) {
+    const lower = icon.toLowerCase();
+    for (const candidate of ['mode_' + lower, 'mode_' + lower.replace(/_/g, '')]) {
+        const path = GLib.build_filenamev([hostDir, TOOL_ICON_DIR, candidate + '.svg']);
+        if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+            return candidate;
+        }
+    }
+    return 'mode_tool';
+}
+
+function selectTool(mode, button) {
+    GgbApp.setMode(mode);
+    if (activeToolButton && activeToolButton !== button) {
+        activeToolButton.remove_css_class('tool-active');
+    }
+    activeToolButton = button;
+    if (button) {
+        button.add_css_class('tool-active');
+    }
+}
+
+function buildToolsPanel() {
+    installToolIcons();
+
+    const provider = new Gtk.CssProvider();
+    provider.load_from_string(PALETTE_CSS);
+    Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+    const content = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 8 });
     const scrolled = new Gtk.ScrolledWindow({ vexpand: true });
-    scrolled.set_child(flow);
-    return scrolled;
+    scrolled.set_child(content);
+
+    let advanced = false;
+    const fill = () => {
+        let child;
+        while ((child = content.get_first_child())) {
+            content.remove(child);
+        }
+        toolButtons.clear();
+        activeToolButton = null;
+
+        let flow = null;
+        let tools = 0;
+        try {
+            for (const line of GgbApp.getTools(advanced).split('\n')) {
+                const field = line.split('\t');
+                if (field[0] === 'C') {
+                    if (flow) {
+                        content.append(flow);
+                    }
+                    const header = new Gtk.Label({ label: field[1], xalign: 0 });
+                    header.add_css_class('heading');
+                    content.append(header);
+                    flow = new Gtk.FlowBox({
+                        row_spacing: 2,
+                        column_spacing: 2,
+                        selection_mode: Gtk.SelectionMode.NONE,
+                        max_children_per_line: 3,
+                        homogeneous: true,
+                    });
+                    continue;
+                }
+                if (field[0] !== 'T' || !flow) {
+                    continue;
+                }
+                const mode = Number(field[1]);
+                const button = new Gtk.Button({ tooltip_text: field[3] });
+                const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 2 });
+                box.append(new Gtk.Image({ icon_name: toolIconName(field[2]), pixel_size: 32 }));
+                const label = new Gtk.Label({ label: field[3], wrap: true, max_width_chars: 10 });
+                label.add_css_class('caption');
+                box.append(label);
+                button.set_child(box);
+                button.set_size_request(78, 74);
+                button.connect('clicked', () => selectTool(mode, button));
+                flow.append(button);
+                toolButtons.set(mode, button);
+                tools++;
+            }
+            if (flow) {
+                content.append(flow);
+            }
+        } catch (e) {
+            printerr('tools: ' + e);
+        }
+        dbg('tool palette: ' + tools + ' tools, advanced=' + advanced);
+    };
+
+    // the kernel's tool collection has a standard and an advanced level
+    const advancedToggle = new Gtk.CheckButton({ label: 'Advanced tools' });
+    advancedToggle.connect('toggled', () => {
+        advanced = advancedToggle.get_active();
+        fill();
+    });
+
+    const outer = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        margin_top: 10,
+        margin_bottom: 10,
+        margin_start: 10,
+        margin_end: 10,
+    });
+    outer.add_css_class('tool-palette');
+    outer.append(scrolled);
+    outer.append(new Gtk.Separator({ orientation: Gtk.Orientation.HORIZONTAL }));
+    outer.append(advancedToggle);
+    fill();
+    return outer;
 }
 
 function railButton(iconName, label) {

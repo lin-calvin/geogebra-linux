@@ -26,6 +26,7 @@ import org.geogebra.common.main.GuiManagerInterface;
 import org.geogebra.common.main.Localization;
 import org.geogebra.common.main.SpreadsheetTableModel;
 import org.geogebra.common.main.settings.DefaultSettings;
+import org.geogebra.common.main.settings.config.AppConfigUnrestrictedGraphing;
 import org.geogebra.common.main.undo.DefaultUndoManager;
 import org.geogebra.common.main.undo.UndoManager;
 import org.geogebra.common.plugin.GgbAPI;
@@ -52,7 +53,7 @@ public class AppGjs extends App {
 
 	public AppGjs() {
 		super(Platform.ANDROID);
-		this.appConfig = new AppConfigGjs();
+		this.appConfig = new AppConfigUnrestrictedGraphing();
 		AwtFactory.setPrototypeIfNull(new AwtFactoryGjs());
 		FormatFactory.setPrototypeIfNull(new FormatFactoryGjs());
 		UtilFactory.setPrototypeIfNull(new UtilFactoryGjs());

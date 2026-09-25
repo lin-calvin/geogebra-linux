@@ -33,8 +33,18 @@ public class LocalizationGjs extends Localization {
 		return key;
 	}
 
+	/**
+	 * The English bundle is loaded from the host (see {@code backend/host/strings.js});
+	 * LocalizationI.getMenu() falls back to the key itself when this returns "".
+	 */
 	@Override
 	public String getMenuDefault(String key, String default0) {
+		if (key != null && HostStrings.available()) {
+			String value = HostStrings.get(key);
+			if (value != null && !value.isEmpty()) {
+				return value;
+			}
+		}
 		return default0;
 	}
 

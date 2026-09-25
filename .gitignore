@@ -12,3 +12,5 @@
 /*.flatpak
 /backend/host/giac.wasm
 /backend/host/giac-glue.js
+/backend/host/toolicons
+/backend/host/menu.properties

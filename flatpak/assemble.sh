@@ -22,7 +22,9 @@ else
   echo "warning: giac.wasm missing; the bundle will run without CAS" >&2
 fi
 cp "$ROOT/backend/host/command.properties" "$STAGING/host/"
+cp "$ROOT/backend/host/menu.properties" "$STAGING/host/"
 cp -a "$ROOT/backend/host/fonts" "$STAGING/fonts"
+cp -a "$ROOT/backend/host/toolicons" "$STAGING/host/toolicons"
 cp "$ROOT/flatpak/gjsgebra" "$STAGING/"
 cp "$ROOT/flatpak/$APPID.desktop" "$STAGING/"
 cp "$ROOT/flatpak/$APPID.metainfo.xml" "$STAGING/"

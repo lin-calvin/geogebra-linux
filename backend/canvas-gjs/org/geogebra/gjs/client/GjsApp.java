@@ -2,14 +2,19 @@ package org.geogebra.gjs.client;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Set;
 
 import org.geogebra.common.awt.AwtFactory;
 import org.geogebra.common.awt.GColor;
 import org.geogebra.common.awt.GGraphics2D;
+import org.geogebra.common.euclidian.EuclidianConstants;
 import org.geogebra.common.euclidian.EuclidianController;
 import org.geogebra.common.euclidian.EuclidianView;
 import org.geogebra.common.euclidian.event.PointerEventType;
+import org.geogebra.common.gui.toolcategorization.ToolCategory;
+import org.geogebra.common.gui.toolcategorization.ToolCollection;
+import org.geogebra.common.gui.toolcategorization.ToolsetLevel;
 import org.geogebra.common.kernel.Construction;
 import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.StringTemplate;
@@ -19,6 +24,7 @@ import org.geogebra.common.kernel.geos.GeoElement;
 import org.geogebra.common.kernel.geos.GeoNumeric;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
 import org.geogebra.common.main.App;
+import org.geogebra.common.main.Localization;
 import org.geogebra.common.main.error.ErrorHandler;
 
 import jsinterop.annotations.JsFunction;
@@ -435,6 +441,69 @@ public class GjsApp {
 	@JsMethod
 	public static void setMode(int mode) {
 		app().setMode(mode);
+	}
+
+	/**
+	 * The available tools, grouped into the categories the official palette uses.
+	 * The kernel owns both the tool set (per app config and platform) and the
+	 * names, so the shell only has to lay them out.
+	 *
+	 * @param advanced
+	 *            whether to include the advanced toolset (polygons, conics, ...)
+	 * @return one line per entry: {@code "C\t<category>"} for a header, then
+	 *         {@code "T\t<mode>\t<icon name>\t<label>"} for each tool of that
+	 *         category
+	 */
+	@JsMethod
+	public static String getTools(boolean advanced) {
+		ToolCollection collection = app().getAvailableTools();
+		collection.setLevel(advanced ? ToolsetLevel.ADVANCED : ToolsetLevel.STANDARD);
+		Localization loc = app().getLocalization();
+		StringBuilder sb = new StringBuilder();
+		List<ToolCategory> categories = collection.getCategories();
+		for (int i = 0; i < categories.size(); i++) {
+			List<Integer> modes = collection.getTools(i);
+			if (modes.isEmpty()) {
+				continue;
+			}
+			if (sb.length() > 0) {
+				sb.append('\n');
+			}
+			sb.append("C\t").append(categories.get(i).getLocalizedHeader(loc));
+			for (int mode : modes) {
+				sb.append('\n').append("T\t").append(mode)
+						.append('\t').append(EuclidianConstants.getModeIconName(mode))
+						.append('\t').append(toolLabel(mode));
+			}
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * @return localized tool name. GeoGebra keeps a separate, more descriptive
+	 *         {@code <Name>.Tool} entry for the palette (Midpoint.Tool is
+	 *         "Midpoint or Center"), so that key wins when it has a value; without
+	 *         any bundle entry the PascalCase key is spaced out instead.
+	 */
+	private static String toolLabel(int mode) {
+		String full = EuclidianConstants.getModeText(mode);
+		String simple = EuclidianConstants.getModeTextSimple(mode);
+		if (hasString(full)) {
+			return app().getLocalization().getMenu(full);
+		}
+		if (hasString(simple)) {
+			return app().getLocalization().getMenu(simple);
+		}
+		return simple.replaceAll("(?<=[a-z])(?=[A-Z])", " ");
+	}
+
+	/** @return whether the host bundle has a non-empty entry for the key */
+	private static boolean hasString(String key) {
+		if (key == null || !HostStrings.available() || !HostStrings.has(key)) {
+			return false;
+		}
+		String value = HostStrings.get(key);
+		return value != null && !value.isEmpty();
 	}
 
 	/**

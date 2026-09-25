@@ -46,9 +46,12 @@ rm -rf "$DEST/org/geogebra/gjs"
 cp -a "$BACKEND/org" "$DEST/"
 
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+# GWT_FLAGS lets a sandboxed build fall back to the local Gradle cache, e.g.
+# GWT_FLAGS=--offline, when Maven Central is not reachable
 echo ">>> compiling org.geogebra.gjs.CanvasGjs"
+# shellcheck disable=SC2086
 "$GGB/gradlew" -p "$GGB/source/web" :web:gwtCompile \
-  -Pgmodule=org.geogebra.gjs.CanvasGjs --console=plain
+  -Pgmodule=org.geogebra.gjs.CanvasGjs --console=plain ${GWT_FLAGS:-}
 
 echo ">>> output: $GGB/source/web/web/war/ggbcanvas/"
 ls -la "$GGB/source/web/web/war/ggbcanvas/" 2>/dev/null || true
@@ -59,6 +62,18 @@ FONTS_DEST="$ROOT/backend/host/fonts"
 mkdir -p "$FONTS_DEST"
 find "$FONTS_SRC" -name 'jlm_*.ttf' -exec cp -f {} "$FONTS_DEST/" \;
 echo "    $(find "$FONTS_DEST" -name '*.ttf' | wc -l) fonts in $FONTS_DEST"
+
+echo ">>> copying menu.properties (English UI strings)"
+cp -f "$GGB/source/shared/common-jre/src/main/resources/org/geogebra/common/jre/properties/menu.properties" \
+  "$ROOT/backend/host/menu.properties"
+echo "    $(wc -l < "$ROOT/backend/host/menu.properties") lines"
+
+echo ">>> copying tool icons (mode_*.svg for the tool palette)"
+ICONS_SRC="$GGB/source/shared/common/src/main/resources/org/geogebra/common/icons/svg/web/toolIcons"
+ICONS_DEST="$ROOT/backend/host/toolicons"
+mkdir -p "$ICONS_DEST"
+cp -f "$ICONS_SRC"/mode_*.svg "$ICONS_DEST/"
+echo "    $(ls "$ICONS_DEST" | wc -l) icons in $ICONS_DEST"
 
 echo ">>> copying command.properties (function selector)"
 cp -f "$GGB/source/shared/common-jre/src/main/resources/org/geogebra/common/jre/properties/command.properties" \
